@@ -3,7 +3,7 @@
 (defsystem dawg
   :name "dawg"
   :author "Takeru Ohta"
-  :version "0.0.2"
+  :version "0.0.3"
   :description "Direct Acyclic Word Graph"
   
   :serial t

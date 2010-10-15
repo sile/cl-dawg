@@ -22,8 +22,8 @@
     (with-slots (hash) (the node node)
       (when (= -1 hash)
         (setf hash (logxor (sxhash (node-label node))
-                           (abs (the fixnum (* (sxhash-node (node-child node)) 7)))
-                           (abs (the fixnum (* (sxhash-node (node-sibling node)) 13))))))
+                           (fixnumize (* (sxhash-node (node-child node)) 7))
+                           (fixnumize (* (sxhash-node (node-sibling node)) 13)))))
       hash)))
 
 (defun memoize (node memo)

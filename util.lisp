@@ -3,7 +3,7 @@
 (defconstant +LINE-FEED+ #\Newline)
 (defconstant +BUFFER-SIZE-LIMIT+ 102400) 
 
-(declaim (inline string-to-octets each-file-line-bytes-impl))
+(declaim (inline string-to-octets each-file-line-bytes-impl fixnumize))
 
 (defmacro package-alias (package &rest alias-list)
   `(eval-when (:compile-toplevel :load-toplevel :execute)
@@ -12,6 +12,9 @@
 (defun string-to-octets (str)
   #+SBCL (sb-ext:string-to-octets str)
   #-SBCL (error "TODO: error message"))
+
+(defun fixnumize (n)
+  (ldb (byte +FIXNUM-LENGTH+ 0) n))
 
 (defmacro each-file-line-bytes ((line-bytes start end filepath) &body body)
   `(each-file-line-bytes-impl 
