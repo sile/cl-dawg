@@ -5,7 +5,8 @@
 (in-package :dawg.double-array.node-allocator)
 
 (defstruct node-allocator 
-  (bits   #*0  :type bit-vector)
+  (head     0  :type fixnum)
+  (bits   #*0  :type simple-bit-vector)
   (nexts #(1)  :type (simple-array fixnum))
   (prevs #(-1) :type (simple-array fixnum)))
 
@@ -14,6 +15,7 @@
                        :prevs (make-array 1 :element-type 'fixnum :initial-contents '(-1))))
 
 (defun resize (alloca)
+  (declare #.dawg::*fastest*)
   (with-slots (bits nexts prevs) (the node-allocator alloca)
     (let ((old-len (length nexts))
           (new-len (* (length nexts) 2)))
@@ -27,23 +29,30 @@
   alloca)
 
 (defun get-next (alloca index)
+  (declare #.dawg::*fastest*
+           (fixnum index))
   (with-slots (nexts) (the node-allocator alloca)
     (if (<= (length nexts) (+ index #x100))
         (get-next (resize alloca) index)
       (aref nexts index))))
 
 (defun can-allocate? (alloca index arcs)
+  (declare #.dawg::*fastest*
+           (list arcs)
+           (fixnum index))
   (get-next alloca index) ; XXX:
   (with-slots (bits nexts) (the node-allocator alloca)
     (and (zerop (bit bits index))
-         (every (lambda (arc) (>= (aref nexts (+ index arc)) 0)) arcs))))
+         (every (lambda (arc) (declare (fixnum arc)) (>= (aref nexts (+ index arc)) 0)) arcs))))
 
 (defun allocate-impl (alloca index arcs)
+  (declare #.dawg::*fastest*
+           (fixnum index))
   (with-slots (bits nexts prevs) (the node-allocator alloca)
     (setf (bit bits index) 1)
     (loop WITH base = index
-          FOR arc IN arcs
-          FOR index = (+ base arc)
+          FOR arc OF-TYPE (mod #x100) IN arcs
+          FOR index OF-TYPE fixnum = (+ base arc)
       DO
       (setf (aref nexts (aref prevs index)) (aref nexts index)
             (aref prevs (aref nexts index)) (aref prevs index)
@@ -51,9 +60,12 @@
             (aref prevs index) -1))))
 
 (defun allocate (alloca arcs)
-  (loop FOR cur = (get-next alloca 0) THEN  (get-next alloca cur)
-        UNTIL (can-allocate? alloca cur arcs)
-    FINALLY
-    (allocate-impl alloca cur arcs)
-    (return cur)))
-
+  (declare #.dawg::*fastest*)
+  (with-slots (head) (the node-allocator alloca)
+    (loop WITH front OF-TYPE (mod #x100) = (car arcs)
+          FOR cur = (get-next alloca head) THEN (get-next alloca cur)
+          FOR base OF-TYPE fixnum = (- cur front)
+          UNTIL (and (plusp base) (can-allocate? alloca base (cdr arcs)))
+      FINALLY
+      (allocate-impl alloca base arcs)
+      (return base))))

@@ -103,6 +103,7 @@
   t)
 
 (defun collect-children (node)
+  (declare #.*fastest*)
   (nreverse
    (loop FOR child = (node-child node)
                 THEN (node-sibling child)

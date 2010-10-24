@@ -11,25 +11,16 @@
 (dawg::package-alias :dawg.byte-stream :byte-stream)
 (dawg::package-alias :dawg.double-array.node-allocator :node-allocator)
 
+(declaim (inline resize set-node))
+
 (deftype uint4 () '(unsigned-byte 32))
 (deftype uint1 () '(unsigned-byte 8))
 
 (defun resize (array index &optional (default 0))
   (loop WHILE (<= (length array) index) DO
-    (setf array (adjust-array array (max 1 (* (length array) 2)) :initial-element default)))
+    (setf array (adjust-array array (the fixnum (max 1 (* (length array) 2)))
+                              :initial-element default)))
   array)
-
-(defun ref (array index &optional (default 0))
-  (loop WHILE (<= (length array) index) DO
-    (setf array (adjust-array array (max 1 (* (length array) 2)) :initial-element default)))
-  (aref array index))
-
-(defsetf ref (array index &optional (default 0)) (new-value)
-  `(progn 
-     (loop WHILE (<= (length ,array) ,index) DO
-           (setf ,array (adjust-array ,array (max 1 (* (length ,array) 2)) 
-                                     :initial-element ,default)))
-     (setf (aref ,array ,index) ,new-value)))
 
 (defstruct double-array 
   (base #() :type (simple-array uint4))
@@ -40,14 +31,19 @@
                                 :if-exists :supersede
                                 :element-type 'uint1)
     (with-slots (base chck) (the double-array da)
-      ;; TODO: add-padding
-      (dawg::write-uint (length base) 4 out)
-      (dawg::write-uint (length chck) 4 out)
+      (let* ((last (position-if (lambda (x) (/= x #xFF)) chck :from-end t))
+             (size (+ last #x100)))
+        (setf base (adjust-array base size :initial-element 0)
+              chck (adjust-array chck size :initial-element #xFF))
+        
+        (print (list (count #xFF chck) (length chck)))
+        (dawg::write-uint (length base) 4 out)
+        (dawg::write-uint (length chck) 4 out)
 
-      (loop FOR b ACROSS base
-            DO (dawg::write-uint b 4 out))
-      (loop FOR c ACROSS chck
-            DO (dawg::write-uint c 1 out))))
+        (loop FOR b ACROSS base
+              DO (dawg::write-uint b 4 out))
+        (loop FOR c ACROSS chck
+              DO (dawg::write-uint c 1 out)))))
   t)
 
 (defun load (filepath)
@@ -66,6 +62,8 @@
       da)))
 
 (defun set-node (da node-idx base-idx arc &aux (next-idx (+ base-idx arc)))
+  (declare (fixnum base-idx)
+           ((mod #x100) arc))
   (with-slots (base chck) (the double-array da)
     (setf base (resize base node-idx #x00) 
           chck (resize chck next-idx #xFF))
@@ -75,7 +73,8 @@
     next-idx))
 
 (defun build-from-trie-impl (trie alloca da node-idx)
-  (when (zerop (mod node-idx 1000))
+  (declare #.dawg::*fastest*)
+  (when (zerop (mod (the fixnum node-idx) 1000))
     (print node-idx))
 
   (let ((children (dawg::collect-children trie)))
