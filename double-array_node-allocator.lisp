@@ -65,7 +65,10 @@
     (loop WITH front OF-TYPE (mod #x100) = (car arcs)
           FOR cur = (get-next alloca head) THEN (get-next alloca cur)
           FOR base OF-TYPE fixnum = (- cur front)
+          FOR cnt OF-TYPE fixnum FROM 0
           UNTIL (and (plusp base) (can-allocate? alloca base (cdr arcs)))
       FINALLY
+      (when (> cnt #x200)
+        (setf head (get-next alloca head)))
       (allocate-impl alloca base arcs)
       (return base))))
