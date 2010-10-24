@@ -1,8 +1,10 @@
 (defpackage :dawg.double-array
   (:use :common-lisp)
+  (:shadow :common-lisp load)
   (:export build-from-trie
            member?
-           save))
+           save
+           load))
 
 (in-package :dawg.double-array)
 
@@ -11,6 +13,23 @@
 
 (deftype uint4 () '(unsigned-byte 32))
 (deftype uint1 () '(unsigned-byte 8))
+
+(defun resize (array index &optional (default 0))
+  (loop WHILE (<= (length array) index) DO
+    (setf array (adjust-array array (max 1 (* (length array) 2)) :initial-element default)))
+  array)
+
+(defun ref (array index &optional (default 0))
+  (loop WHILE (<= (length array) index) DO
+    (setf array (adjust-array array (max 1 (* (length array) 2)) :initial-element default)))
+  (aref array index))
+
+(defsetf ref (array index &optional (default 0)) (new-value)
+  `(progn 
+     (loop WHILE (<= (length ,array) ,index) DO
+           (setf ,array (adjust-array ,array (max 1 (* (length ,array) 2)) 
+                                     :initial-element ,default)))
+     (setf (aref ,array ,index) ,new-value)))
 
 (defstruct double-array 
   (base #() :type (simple-array uint4))
@@ -21,6 +40,7 @@
                                 :if-exists :supersede
                                 :element-type 'uint1)
     (with-slots (base chck) (the double-array da)
+      ;; TODO: add-padding
       (dawg::write-uint (length base) 4 out)
       (dawg::write-uint (length chck) 4 out)
 
@@ -30,18 +50,59 @@
             DO (dawg::write-uint c 1 out))))
   t)
 
+(defun load (filepath)
+  (with-open-file (in filepath :element-type 'uint1)
+    (let* ((base-len (dawg::read-uint 4 in))
+           (chck-len (dawg::read-uint 4 in))
+           (da (make-double-array :base (make-array base-len :element-type 'uint4)
+                                  :chck (make-array chck-len :element-type 'uint1))))
+      (with-slots (base chck) da
+        (loop FOR i FROM 0 BELOW base-len
+          DO
+          (setf (aref base i) (dawg::read-uint 4 in)))
+        (loop FOR i FROM 0 BELOW chck-len
+          DO
+          (setf (aref chck i) (dawg::read-uint 1 in))))
+      da)))
+
+(defun set-node (da node-idx base-idx arc &aux (next-idx (+ base-idx arc)))
+  (with-slots (base chck) (the double-array da)
+    (setf base (resize base node-idx #x00) 
+          chck (resize chck next-idx #xFF))
+    
+    (setf (aref base node-idx) base-idx
+          (aref chck next-idx) arc)
+    next-idx))
+
+(defun build-from-trie-impl (trie alloca da node-idx)
+  (when (zerop (mod node-idx 1000))
+    (print node-idx))
+
+  (let ((children (dawg::collect-children trie)))
+    (when children
+      (let ((base-idx (node-allocator:allocate
+                       alloca 
+                       (mapcar #'dawg::node-label children))))
+        (dolist (child children)
+          (build-from-trie-impl 
+           child alloca da
+           (set-node da node-idx base-idx (dawg::node-label child))))))))
+
 (defun build-from-trie (trie)
-  trie)
+  (let ((da (make-double-array :base (make-array 0 :element-type 'uint4)
+                               :chck (make-array 0 :element-type 'uint1)))) 
+    (build-from-trie-impl trie (node-allocator:make) da 0)
+    da))
 
 (defun leaf? (node)
   (oddp node))
 
 (defun member?-impl (in node base chck)
-  (let ((next (+ (aref base 0) (byte-stream:peek in))))
+  (let ((next (+ (aref base node) (byte-stream:peek in))))
     (when (= (aref chck next) (byte-stream:peek in))
       (if (byte-stream:eos? in)
           t
-        (and (not (leaf? node))
+        (and #+C (not (leaf? node))
              (member?-impl (byte-stream:eat in) next base chck))))))
 
 (defun member?(key da)

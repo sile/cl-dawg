@@ -1,6 +1,3 @@
 [概要]
 ・DAWG(Direct Acyclic Word Graph)の実装
 
-[依存パッケージ]
-・dict
-　・http://github.com/dict

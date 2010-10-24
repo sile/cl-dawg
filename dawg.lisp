@@ -101,6 +101,13 @@
   (double-array:save filepath
                      (double-array:build-from-trie trie))
   t)
-  
+
+(defun collect-children (node)
+  (nreverse
+   (loop FOR child = (node-child node)
+                THEN (node-sibling child)
+         WHILE child
+     COLLECT child)))
+
 (package-alias :dawg.byte-stream)
 (package-alias :dawg.double-array)

@@ -24,6 +24,12 @@
            COLLECT
            `(write-byte (ldb (byte 8 ,(* #1# 8)) (the ,int-type ,#2#)) ,out)))))
 
+(defmacro read-uint (byte-width in)
+  `(the (unsigned-byte ,(* byte-width 8))
+        (+ ,@(loop FOR #1=#:i FROM 0 BELOW byte-width
+               COLLECT
+               `(ash (read-byte ,in) ,(* #1# 8))))))
+
 (defmacro each-file-line-bytes ((line-bytes start end filepath) &body body)
   `(each-file-line-bytes-impl 
     (lambda (,line-bytes ,start ,end)
