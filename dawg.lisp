@@ -1,5 +1,6 @@
 (in-package :dawg)
 (package-alias :dawg.byte-stream :byte-stream)
+(package-alias :dawg.double-array :double-array)
 
 (declaim (inline make-node))
 
@@ -96,4 +97,10 @@
     (node-count-impl trie memo)
     (hash-table-count memo)))
 
+(defun save-as-double-array (filepath trie)
+  (double-array:save filepath
+                     (double-array:build-from-trie trie))
+  t)
+  
 (package-alias :dawg.byte-stream)
+(package-alias :dawg.double-array)

@@ -36,4 +36,3 @@
   (declare #.dawg::*fastest*)
   (prog1 (peek in)
     (eat in)))
-           

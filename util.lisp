@@ -16,6 +16,14 @@
 (defun fixnumize (n)
   (ldb (byte +FIXNUM-LENGTH+ 0) n))
 
+(defmacro write-uint (num-exp byte-width out)
+  (let ((int-type `(unsigned-byte ,(* byte-width 8))))
+    `(progn
+       ,@(loop WITH #2=#:num = num-exp
+               FOR #1=#:i FROM 0 BELOW byte-width
+           COLLECT
+           `(write-byte (ldb (byte 8 ,(* #1# 8)) (the ,int-type ,#2#)) ,out)))))
+
 (defmacro each-file-line-bytes ((line-bytes start end filepath) &body body)
   `(each-file-line-bytes-impl 
     (lambda (,line-bytes ,start ,end)

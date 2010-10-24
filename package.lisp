@@ -1,6 +1,7 @@
 (defpackage dawg
   (:use :common-lisp)
   (:export build-from-file
+           save-as-double-array
            member?
            node-count))
 (in-package :dawg)
