@@ -74,7 +74,7 @@
 
 (defun build-from-trie-impl (trie alloca da node-idx)
   (declare #.dawg::*fastest*)
-  (when (zerop (mod (the fixnum node-idx) 1000))
+  (when (zerop (mod (the fixnum node-idx) 5000))
     (print node-idx))
 
   (let ((children (dawg::collect-children trie)))
