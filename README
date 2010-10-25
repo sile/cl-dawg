@@ -1,3 +1,21 @@
 [概要]
 ・DAWG(Direct Acyclic Word Graph)の実装
 
+[API]
+- dawg:build-from-file(filepath)
+  -- ソート済みのファイルからDAWGを構築
+
+- dawg:node-count(dawg)
+  -- DAWGのユニークノード数カウント
+
+- dawg:member?(key dawg)
+  -- keyがDAWGに含まれているかどうかを調べる
+
+- dawg:save-as-double-array (filepath dawg)
+  -- DAWGをDoubleArrayとして保存する
+
+- dawg.double-array:load (filepath)
+  -- ファイルからDoubleArrayを読み込む
+
+- dawg.double-array:member? (key double-array)
+  -- keyがDoubleArrayに含まれているかどうかを調べる
