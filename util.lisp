@@ -3,12 +3,16 @@
 (defconstant +LINE-FEED+ #\Newline)
 (defconstant +BUFFER-SIZE-LIMIT+ 102400) 
 
-(declaim (inline string-to-octets each-file-line-bytes-impl fixnumize))
+(declaim (inline string-to-octets each-file-line-bytes-impl fixnumize get-obj-address))
 
 (defmacro package-alias (package &rest alias-list)
   `(eval-when (:compile-toplevel :load-toplevel :execute)
      (rename-package ,package ,package ',alias-list)))
-  
+
+(defun get-obj-address (obj)
+  #+SBCL (sb-kernel:get-lisp-obj-address obj)
+  #-SBCL (error "TODO: error message"))
+
 (defun string-to-octets (str)
   #+SBCL (sb-ext:string-to-octets str)
   #-SBCL (error "TODO: error message"))

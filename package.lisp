@@ -15,5 +15,8 @@
 (deftype octets () '(vector octet))
 (deftype simple-octets () '(simple-array octet))
 (deftype array-index () `(mod ,array-dimension-limit))
+(deftype positive-fixnum () `(integer 0 ,most-positive-fixnum))
 
 (defconstant +FIXNUM-LENGTH+ (integer-length most-positive-fixnum))
+
+
