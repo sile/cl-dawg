@@ -10,6 +10,7 @@
   :components ((:file "package")
                (:file "util")
                (:file "byte-stream")
+               (:file "buffered-output")
                (:file "double-array_node-allocator")
                (:file "double-array")
                (:file "dawg")))

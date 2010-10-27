@@ -10,69 +10,38 @@
 
 (dawg::package-alias :dawg.byte-stream :byte-stream)
 (dawg::package-alias :dawg.double-array.node-allocator :node-allocator)
+(dawg::package-alias :dawg.buffered-output :buffered-output)
 
 (declaim (inline resize set-node))
 
 (deftype uint4 () '(unsigned-byte 32))
 (deftype uint1 () '(unsigned-byte 8))
 
-(defun resize (array index &optional (default 0))
-  (loop WHILE (<= (length array) index) DO
-    (setf array (adjust-array array (the fixnum (max 1 (* (length array) 2)))
-                              :initial-element default)))
-  array)
-
 (defstruct double-array
-  (base nil :type stream)
-  (chck nil :type stream))
-#|
-(defstruct double-array 
-  (base #() :type (simple-array uint4))
-  (chck #() :type (simple-array uint1)))
-|#
+  (base nil :type buffered-output:buffered-output)
+  (chck nil :type buffered-output:buffered-output))
 
 (defun save (filepath da)
-#|
-  (with-open-file (out filepath :direction :output
-                                :if-exists :supersede
-                                :element-type 'uint1)
-    (with-slots (base chck) (the double-array da)
-      (let* ((last (position-if (lambda (x) (/= x #xFF)) chck :from-end t))
-             (size (+ last #x100)))
-        (setf base (adjust-array base size :initial-element 0)
-              chck (adjust-array chck size :initial-element #xFF))
-        
-        (print (list (count #xFF chck) (length chck)))
-        (dawg::write-uint (length base) 4 out)
-        (dawg::write-uint (length chck) 4 out)
-
-        (loop FOR b ACROSS base
-              DO (dawg::write-uint b 4 out))
-        (loop FOR c ACROSS chck
-              DO (dawg::write-uint c 1 out)))))
-|#
+  (declare (ignorable filepath da))
+  #+IGNORE
   (with-slots (base chck) da
     (close base)
     (close chck))
-              
   t)
 
 (defun set-node (da node-idx base-idx arc &aux (next-idx (+ base-idx arc)))
   (declare (fixnum base-idx next-idx)
            ((mod #x100) arc))
   (with-slots (base chck) (the double-array da)
+    (buffered-output:write-byte base-idx base :position node-idx)
+    (buffered-output:write-byte arc      chck :position next-idx)
+#|    
     (file-position base node-idx)
     (write-byte base-idx base)
 
     (file-position chck next-idx)
     (write-byte arc chck)
-    #|
-    (setf base (resize base node-idx #x00) 
-          chck (resize chck next-idx #xFF))
-    
-    (setf (aref base node-idx) base-idx
-          (aref chck next-idx) arc)
-              |#
+|#
     next-idx))
 
 (defun build-from-trie-impl (trie alloca da node-idx)
@@ -91,19 +60,11 @@
            (set-node da node-idx base-idx (dawg::node-label child))))))))
 
 (defun build-from-trie (trie)
-  (let ((da (make-double-array 
-             :base (open "/tmp/base" :direction :output 
-                         :element-type 'uint4 :if-exists :supersede)
-             :chck (open "/tmp/chck" :direction :output
-                         :element-type 'uint1 :if-exists :supersede)))
-        #+IGNORE
-        (da (make-double-array :base (make-array 0 :element-type 'uint4)
-                               :chck (make-array 0 :element-type 'uint1)))) 
-    (build-from-trie-impl trie (node-allocator:make) da 0)
-    da))
-
-(defun leaf? (node)
-  (oddp node))
+  (buffered-output:with-buffered-output (out1 "/tmp/base" :byte-width 4)
+    (buffered-output:with-buffered-output (out2 "/tmp/chck" :initial-element #xFF)
+      (let ((da (make-double-array :base out1 :chck out2)))
+        (build-from-trie-impl trie (node-allocator:make) da 0)
+        da))))
 
 (defstruct da2
   (base #() :type (simple-array uint4))
@@ -114,8 +75,7 @@
     (when (= (aref chck next) (byte-stream:peek in))
       (if (byte-stream:eos? in)
           t
-        (and #+C (not (leaf? node))
-             (member?-impl (byte-stream:eat in) next base chck))))))
+        (member?-impl (byte-stream:eat in) next base chck)))))
 
 (defun member?(key da)
   (with-slots (base chck) (the da2 da)
@@ -125,11 +85,10 @@
 
 (defun load (filepath)
   (declare (ignorable filepath))
-  ;;(with-open-file (in filepath :element-type 'uint1)
   (with-open-file (in "/tmp/base" :element-type 'uint1)
     (with-open-file (in2 "/tmp/chck" :element-type 'uint1)
-    (let* ((base-len (/ (file-length in) 4));;(dawg::read-uint 4 in))
-           (chck-len (file-length in2));;(dawg::read-uint 4 in))
+    (let* ((base-len (/ (file-length in) 4))
+           (chck-len (file-length in2))
            (da (make-da2 :base (make-array base-len :element-type 'uint4)
                          :chck (make-array chck-len :element-type 'uint1))))
       (with-slots (base chck) da
@@ -143,3 +102,4 @@
 
 (dawg::package-alias :dawg.byte-stream)
 (dawg::package-alias :dawg.double-array.node-allocator)
+(dawg::package-alias :dawg.buffered-output)

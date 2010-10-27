@@ -28,15 +28,6 @@
                            (fixnumize (* (sxhash-node (node-sibling node)) 13)))))
       hash)))
 
-#+IGNORE
-(defun sxhash-node (node)
-  (declare #.*fastest*)
-  (if (null node)
-      #.(sxhash nil)
-    (logxor (sxhash (node-label node))
-            (fixnumize (* 07 (sxhash (get-obj-address (node-child node)))))
-            (fixnumize (* 13 (sxhash (get-obj-address (node-sibling node))))))))
-
 (defun memoize (node memo)
   (declare #.*fastest*)
   (if (null node)
