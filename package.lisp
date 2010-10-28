@@ -6,6 +6,7 @@
            node-count))
 (in-package :dawg)
 
+;;(defvar *fastest*   '(optimize (speed 0) (safety 3) (debug 3)))
 (defvar *fastest*   '(optimize (speed 3) (safety 0) (debug 0)))
 (defvar *interface* '(optimize (speed 3) (safety 2) (debug 1)))
 (defvar *muffle-warning* #+SBCL '(sb-ext:muffle-conditions sb-ext:compiler-note) 

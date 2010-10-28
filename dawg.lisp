@@ -16,7 +16,7 @@
        (eq (node-child n1) (node-child n2))
        (eq (node-sibling n1) (node-sibling n2))))
 
-(declaim (ftype (function (node) positive-fixnum) sxhash-node))
+(declaim (ftype (function ((or null node)) positive-fixnum) sxhash-node))
 (defun sxhash-node (node)
   (declare #.*fastest*)
   (if (null node)

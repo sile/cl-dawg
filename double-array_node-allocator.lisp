@@ -4,72 +4,125 @@
            allocate))
 (in-package :dawg.double-array.node-allocator)
 
+(defconstant +MANAGE_RANGE+ 89120)
+(deftype base-flag () `(simple-bit-vector ,+MANAGE_RANGE+))
+(deftype nexts () `(simple-array fixnum (,+MANAGE_RANGE+)))
+
 (defstruct node-allocator 
-  (head     0  :type fixnum)
-  (bits   #*0  :type simple-bit-vector)
-  (nexts #(1)  :type (simple-array fixnum)))
+  (head #x100 :type fixnum)
+  (bits   #*  :type base-flag)
+  (nexts #()  :type nexts)
+  (prevs #()  :type nexts)
+  (offset  0  :type fixnum))
 
 (defun make ()
-  (make-node-allocator :nexts (make-array 1 :element-type 'fixnum :initial-contents '(1))))
+  (let ((bits  (make-array +MANAGE_RANGE+ :element-type 'bit :initial-element 0))
+        (nexts (make-array +MANAGE_RANGE+ :element-type 'fixnum))
+        (prevs (make-array +MANAGE_RANGE+ :element-type 'fixnum)))
+    (loop FOR i FROM 0 BELOW +MANAGE_RANGE+ 
+      DO
+      (setf (aref nexts i) (1+ i)
+            (aref prevs i) (1- i)))
+    (make-node-allocator :nexts nexts :prevs prevs :bits bits)))
 
-
-(defun resize (alloca)
+(defun shift (alloca)
   (declare #.dawg::*fastest*)
-  (with-slots (bits nexts) (the node-allocator alloca)
-    (let ((old-len (length nexts))
-          (new-len (* (length nexts) 2)))
-      (setf bits  (adjust-array bits new-len :initial-element 0)
-            nexts (adjust-array nexts new-len))
-      (loop FOR i FROM old-len BELOW new-len
+  (print :shift)
+  (with-slots (bits nexts prevs offset head) (the node-allocator alloca)
+    (let ((new-offset head))
+      (loop WHILE (< new-offset (+ offset (round (* +MANAGE_RANGE+ 3/4))))
         DO
-        (setf (aref nexts i) (1+ i)))))
+        (setf new-offset (aref nexts (- new-offset offset))))
+      (print `(:offset ,offset :-> ,new-offset))
+      (let* ((delta (- new-offset offset))
+             (use-len (- +MANAGE_RANGE+ delta)))
+        (shiftf (subseq bits 0 use-len) (subseq bits delta))
+        (fill bits 0 :start use-len)
+
+        (setf offset new-offset)
+        
+        (shiftf (subseq nexts 0 use-len) (subseq nexts delta))
+        (shiftf (subseq prevs 0 use-len) (subseq prevs delta))
+        (loop FOR i FROM (+ offset use-len) BELOW (+ offset +MANAGE_RANGE+)
+          DO
+          (setf (aref nexts (- i offset)) (1+ i)
+                (aref prevs (- i offset)) (1- i)))
+
+        (setf head offset)
+        (loop WHILE (< head (+ offset #x100))
+          DO
+          (setf head (aref nexts (- head offset)))))))
   alloca)
 
-(defun get-next (alloca index)
+(defun ref (alloca index)
   (declare #.dawg::*fastest*
            (fixnum index))
-  (with-slots (nexts) (the node-allocator alloca)
-    (if (<= (length nexts) (+ index #x100))
-        (get-next (resize alloca) index)
-      (aref nexts index))))
+  (with-slots (offset nexts) (the node-allocator alloca)
+    (assert (<= offset index) () "offset:~A > index:~A" offset index)
+    (if (<= (+ offset +MANAGE_RANGE+) index)
+        (ref (shift alloca) index)
+      (aref nexts (- index offset)))))
+
+(defun bref (alloca index)
+  (declare #.dawg::*fastest*
+           (fixnum index))
+  (with-slots (bits offset) (the node-allocator alloca)
+    ;; (assert (<= offset index))
+    (if (> offset index)
+        1
+    (if (<= (+ offset +MANAGE_RANGE+) index)
+        (bref (shift alloca) index)
+      (bit bits (- index offset)))))
+  )
+
+(defun get-next (alloca index)
+  (ref alloca index))
 
 (defun can-allocate? (alloca index arcs)
   (declare #.dawg::*fastest*
            (list arcs)
            (fixnum index))
-  (get-next alloca index) ; XXX:
-  (with-slots (bits nexts) (the node-allocator alloca)
-    (and (zerop (bit bits index))
-         (every (lambda (arc) (declare (fixnum arc)) (>= (aref nexts (+ index arc)) 0)) arcs))))
+  (and (zerop (bref alloca index))
+       (every (lambda (arc)
+                (/= -1 (ref alloca (+ index arc))))
+              arcs)))
 
-(defun allocate-impl (alloca index arcs prev)
+(defun allocate-impl (alloca index arcs)
   (declare #.dawg::*fastest*
            (fixnum index))
-  (with-slots (bits nexts) (the node-allocator alloca)
-    (setf (bit bits index) 1)
+  ;;(print `(:alloc ,index ,arcs))
+  (with-slots (bits head prevs nexts offset) (the node-allocator alloca)
+    (when (<= offset index)
+      (setf (bit bits (- index offset)) 1))
     (loop WITH base = index
           FOR arc OF-TYPE (mod #x100) IN arcs
           FOR index OF-TYPE fixnum = (+ base arc)
       DO
-      (loop UNTIL (= (get-next alloca prev) index) 
-            DO (setf prev (get-next alloca prev)))
-            
-      (setf (aref nexts prev) (aref nexts index)
-            (aref nexts index) -1))))
+      (macrolet ((prev (index) `(aref prevs (- ,index offset)))
+                 (next (index) `(aref nexts (- ,index offset))))
+        ;;(print (list index (prev index) (next index)))
+        ;; XXX:
+        (when (= head index)
+          (print `(:hit ,head))
+          (setf head (next index)))
+
+        (when (<= offset (prev index))
+          (setf (next (prev index)) (next index)))
+        (when (<= offset index)
+          (ref alloca index)
+          (ref alloca (next index))
+
+          (setf (prev (next index)) (prev index)
+                (prev index) -1
+                (next index) -1))))))
 
 (defun allocate (alloca arcs)
   (declare #.dawg::*fastest*)
   (with-slots (head) (the node-allocator alloca)
     (loop WITH front OF-TYPE (mod #x100) = (car arcs)
-          WITH prev = head
           FOR cur = (get-next alloca head) THEN (get-next alloca cur)
           FOR base OF-TYPE fixnum = (- cur front)
-          FOR cnt OF-TYPE fixnum FROM 0
           UNTIL (and (plusp base) (can-allocate? alloca base (cdr arcs)))
-      DO
-      (setf prev cur)
       FINALLY
-      (when (> cnt #x200)
-        (setf head (get-next alloca head)))
-      (allocate-impl alloca base arcs prev)
+      (allocate-impl alloca base arcs)
       (return base))))
