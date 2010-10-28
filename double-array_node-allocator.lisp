@@ -4,7 +4,7 @@
            allocate))
 (in-package :dawg.double-array.node-allocator)
 
-(defconstant +MANAGE_RANGE+ 89120)
+(defconstant +MANAGE_RANGE+ 8912)
 (deftype base-flag () `(simple-bit-vector ,+MANAGE_RANGE+))
 (deftype nexts () `(simple-array fixnum (,+MANAGE_RANGE+)))
 
@@ -93,13 +93,17 @@
   ;;(print `(:alloc ,index ,arcs))
   (with-slots (bits head prevs nexts offset) (the node-allocator alloca)
     (when (<= offset index)
+      (assert (<= offset index))
       (setf (bit bits (- index offset)) 1))
     (loop WITH base = index
           FOR arc OF-TYPE (mod #x100) IN arcs
           FOR index OF-TYPE fixnum = (+ base arc)
       DO
+      (ref alloca index) ;; XXX:
       (macrolet ((prev (index) `(aref prevs (- ,index offset)))
                  (next (index) `(aref nexts (- ,index offset))))
+        (assert (/= (prev index) -1))
+        (assert (/= (next index) -1))
         ;;(print (list index (prev index) (next index)))
         ;; XXX:
         (when (= head index)
@@ -108,9 +112,11 @@
 
         (when (<= offset (prev index))
           (setf (next (prev index)) (next index)))
-        (when (<= offset index)
+
           (ref alloca index)
           (ref alloca (next index))
+        (when (<= offset index)
+
 
           (setf (prev (next index)) (prev index)
                 (prev index) -1
