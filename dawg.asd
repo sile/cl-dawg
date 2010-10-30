@@ -3,13 +3,11 @@
 (defsystem dawg
   :name "dawg"
   :author "Takeru Ohta"
-  :version "0.0.4"
+  :version "0.1.0"
   :description "Direct Acyclic Word Graph"
   
   :serial t
   :components ((:file "package")
                (:file "util")
-               (:file "byte-stream")
-               (:file "double-array_node-allocator")
-               (:file "double-array")
+               (:file "char-stream")
                (:file "dawg")))

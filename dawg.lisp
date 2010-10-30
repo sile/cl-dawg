@@ -1,91 +1,144 @@
 (in-package :dawg)
-(package-alias :dawg.byte-stream :byte-stream)
-(package-alias :dawg.double-array :double-array)
 
-(declaim (inline make-node))
+(declaim (inline make-node calc-child-total calc-sibling-total))
 
 (defstruct node
-  (label     0 :type octet)
-  (sibling nil :type (or null node))
-  (child   nil :type (or null node))
-  (hash     -1 :type fixnum))
+  (label    #\Null :type character)
+  (sibling     nil :type (or null node))
+  (child       nil :type (or null node))
+  (terminal?   nil :type boolean)
+  (child-total   0 :type positive-fixnum)
+  (sibling-total 0 :type positive-fixnum)
+  (hash         -1 :type fixnum))
+
+(defun calc-child-total (node)
+  (with-slots (child) (the node node)
+    (if (null child)
+        0
+      (+ (if (node-terminal? child) 1 0)
+         (node-child-total child) (node-sibling-total child)))))
+
+(defun calc-sibling-total (node)
+  (with-slots (sibling) (the node node)
+    (if (null sibling)
+        0
+      (+ (if (node-terminal? sibling) 1 0)
+         (node-child-total sibling) (node-sibling-total sibling)))))
 
 (defun node= (n1 n2)
   (declare #.*fastest*)
-  (and (= (node-label n1) (node-label n2))
-       (eq (node-child n1) (node-child n2))
-       (eq (node-sibling n1) (node-sibling n2))))
+  (and (eq (node-child n1) (node-child n2))
+       (eq (node-sibling n1) (node-sibling n2))
+       (char= (node-label n1) (node-label n2))
+       (eq (node-terminal? n1) (node-terminal? n2))))
 
 (defun sxhash-node (node)
   (declare #.*fastest*)
   (if (null node)
       #.(sxhash nil)
-    (with-slots (hash) (the node node)
+    (with-slots (hash child-total sibling-total) (the node node)
       (when (= -1 hash)
         (setf hash (logxor (sxhash (node-label node))
+                           (sxhash (node-terminal? node))
                            (fixnumize (* (sxhash-node (node-child node)) 7))
-                           (fixnumize (* (sxhash-node (node-sibling node)) 13)))))
+                           (fixnumize (* (sxhash-node (node-sibling node)) 13))))
+        (setf child-total (calc-child-total node)
+              sibling-total (calc-sibling-total node)))
       hash)))
 
-(defun memoize (node memo)
+(defun share (node memo)
   (declare #.*fastest*)
   (if (null node)
       nil
     (or (gethash node memo)
         (progn 
-          (setf (node-child node) (memoize (node-child node) memo)
-                (node-sibling node) (memoize (node-sibling node) memo))
+          (setf (node-child node) (share (node-child node) memo)
+                (node-sibling node) (share (node-sibling node) memo))
           (gethash node memo))
         (setf (gethash node memo) node))))
 
 (defun push-child (in parent)
   (declare #.*fastest*) 
-  (let ((new-node (make-node :label (byte-stream:peek in))))
-    (setf (node-sibling new-node) (node-child parent)
-          (node-child parent) new-node)
-    (unless (byte-stream:eos? in)
-      (push-child (byte-stream:eat in) new-node))))
+  (if (char-stream-eos? in)
+      (setf (node-terminal? parent) t)
+    (let ((new-node (make-node :label (char-stream-read in))))
+      (setf (node-sibling new-node) (node-child parent)
+            (node-child parent) new-node)
+      (push-child in new-node))))
 
 (defun insert (in parent memo)
   (declare #.*fastest*)
   (let ((node (node-child parent)))
     (if (or (null node)
-            (/= (byte-stream:peek in) (node-label node)))
+            (char/= (char-stream-peek in) (node-label node)))
         (progn
-          (setf (node-child parent) (memoize node memo))
+          (setf (node-child parent) (share node memo))
           (push-child in parent))
-      (insert (byte-stream:eat in) node memo))))
+      (insert (char-stream-eat in) node memo))))
 
 (sb-ext:define-hash-table-test node= sxhash-node)
-(defun build-from-file (filepath)
-  (declare #.*fastest*)
-  (let* ((trie (make-node))
-         (memo (make-hash-table :test #'node=))
-         (cnt 0))
-    (declare (fixnum cnt))
-    (each-file-line-bytes (bytes beg end filepath)
-      (when (zerop (mod (incf cnt) 5000))
-        (print (list (hash-table-count memo) cnt)))
-      (let ((in (byte-stream:make bytes :start beg :end end)))
+(defun build-from-file (filepath &key show-progress)
+  (declare #.*interface*
+           (string filepath))
+  (with-open-file (is filepath)
+    (declare #.*fastest*)
+    (loop WITH trie = (make-node)
+          WITH memo = (make-hash-table :test #'node=)
+          FOR count OF-TYPE positive-fixnum FROM 0
+          FOR line = (read-line is nil nil)
+          WHILE line
+      DO
+      (when (and show-progress 
+                 (zerop (mod count 10000)))
+        (format t "~&; ~A~%" count))
+      (let ((in (make-char-stream line)))
         (declare (dynamic-extent in))
-        (values (insert in trie memo))))
-    (setf trie (memoize trie memo))
-    trie))
+        (insert in trie memo))
 
-(defun member?-impl (in node)
+      FINALLY
+      (return (share trie memo)))))
+
+(defun member?-impl (in node parent)
   (declare #.*fastest*)
-  (cond ((null node) nil)
-        ((= (byte-stream:peek in) (node-label node))
-         (or (byte-stream:eos? in)
-             (member?-impl (byte-stream:eat in) (node-child node))))
-        ((< (byte-stream:peek in) (node-label node))
-         (member?-impl in (node-sibling node)))))
+  (cond ((char-stream-eos? in)
+         (node-terminal? parent))
+        ((null node) nil)
+        ((char= (char-stream-peek in) (node-label node))
+         (member?-impl (char-stream-eat in) (node-child node) node))
+        ((char< (char-stream-peek in) (node-label node))
+         (member?-impl in (node-sibling node) parent))))
 
 (defun member? (key trie)
-  (declare #.*fastest*)
-  (let ((in (byte-stream:make (string-to-octets key))))
-    (member?-impl in (node-child trie))))
+  (declare #.*interface*
+           (simple-characters key)
+           (node trie))
+  (locally 
+   (declare #.*fastest*)
+   (let ((in (make-char-stream key)))
+    (member?-impl in (node-child trie) trie))))
 
+(defun get-id-impl (in node parent id)
+  (declare #.*fastest*
+           (positive-fixnum id))
+  (cond ((char-stream-eos? in)
+         (and (node-terminal? parent) id))
+        ((null node) nil)
+        ((char= (char-stream-peek in) (node-label node))
+         (get-id-impl (char-stream-eat in) (node-child node) node
+                       (+ id (if (node-terminal? node) 1 0) (node-sibling-total node))))
+        ((char< (char-stream-peek in) (node-label node))
+         (get-id-impl in (node-sibling node) parent id))))
+
+(defun get-id (key trie)
+  (declare #.*interface*
+           (simple-characters key)
+           (node trie))
+  (locally 
+   (declare #.*fastest*)
+   (let ((in (make-char-stream key)))
+     (get-id-impl in (node-child trie) trie 0))))
+
+#|
 (defun node-count-impl (node memo)
   (when (and node (not (gethash node memo)))
     (setf (gethash node memo) t)
@@ -101,6 +154,7 @@
   (double-array:save filepath
                      (double-array:build-from-trie trie))
   t)
+|#
 
 (defun collect-children (node)
   (declare #.*fastest*)
@@ -109,6 +163,3 @@
                 THEN (node-sibling child)
          WHILE child
      COLLECT child)))
-
-(package-alias :dawg.byte-stream)
-(package-alias :dawg.double-array)
