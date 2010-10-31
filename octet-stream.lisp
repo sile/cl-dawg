@@ -1,15 +1,16 @@
 (defpackage dawg.octet-stream
   (:use :common-lisp :dawg.global)
-  (:shadow :common-lisp read peek)
+  (:shadow :common-lisp read peek position)
   (:export make
            read
            peek
            eos?
-           eat))
+           eat
+           position))
 (in-package :dawg.octet-stream)
 
 (declaim #.*fastest*
-         (inline make-octet-stream make eos? octet-length peek read eat))
+         (inline make-octet-stream make eos? octet-length peek read eat position))
 
 (defstruct octet-stream
   (src      "" :type simple-characters)
@@ -18,7 +19,9 @@
   (code      0 :type unicode)
   (octet-pos 0 :type (mod 5))
   (octet-len 0 :type (mod 5)))
-             
+
+(defun position (in)
+  (octet-stream-pos in))
 
 (defun octet-length (code)
   (declare (unicode code))
@@ -38,8 +41,8 @@
                        :code code :octet-pos len :octet-len len)))
 
 (defun eos? (in)
-  (with-slots (src pos octet-pos) (the octet-stream in)
-    (= pos (length src))))
+  (with-slots ( pos end) (the octet-stream in)
+    (= pos end)))
 
 (defun peek (in)
   (with-slots (src pos code octet-pos octet-len) (the octet-stream in)

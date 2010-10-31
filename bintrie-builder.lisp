@@ -1,16 +1,17 @@
 (defpackage dawg.bintrie-builder
   (:use :common-lisp :dawg.global)
   (:export build-from-file
-           node ;; XXX:
            collect-children
            node-label
+           node-child
+           node-options
            member?))
 (in-package :dawg.bintrie-builder)
 
-(package-alias :dawg.octet-stream :octet-stream)
+(package-alias :dawg.octet-stream :stream)
 
 (declaim #.*fastest*
-         (inline make-node calc-child-total calc-sibling-total))
+         (inline make-node calc-child-total calc-sibling-total node-options))
 
 (defstruct node
   (label         0 :type octet)
@@ -20,6 +21,11 @@
   (child-total   0 :type positive-fixnum)
   (sibling-total 0 :type positive-fixnum)
   (hash         -1 :type fixnum))
+
+(defun node-options (node)
+  (with-slots (terminal? sibling-total) (the node node)
+    (+ (if terminal? 1 0)
+       (ash sibling-total 1))))
 
 (defun node= (n1 n2)
   (and (eq (node-child n1) (node-child n2))
@@ -63,22 +69,21 @@
         (setf (gethash node memo) node))))
 
 (defun push-child (in parent)
-  (if (octet-stream:eos? in)
+  (if (stream:eos? in)
       (setf (node-terminal? parent) t)
-    (let ((new-node (make-node :label (octet-stream:read in))))
-      (setf (node-sibling new-node) (node-child parent)
-            (node-child parent) new-node)
+    (let ((new-node (make-node :label (stream:read in))))
+      (shiftf (node-sibling new-node) (node-child parent) new-node)
       (push-child in new-node))))
 
 (defun insert (in parent memo)
   (let ((node (node-child parent)))
     (if (or (null node)
-            (octet-stream:eos? in)
-            (/= (octet-stream:peek in) (node-label node)))
+            (stream:eos? in)
+            (/= (stream:peek in) (node-label node)))
         (progn
           (setf (node-child parent) (share node memo))
           (push-child in parent))
-      (insert (octet-stream:eat in) node memo))))
+      (insert (stream:eat in) node memo))))
 
 (defun build-from-file (filepath &key show-progress)
   (when show-progress
@@ -92,27 +97,37 @@
       DO
       (when (and show-progress (zerop (mod line-num 100000)))
         (format t "~&;  ~A~%" line-num))
-      (let ((in (octet-stream:make line)))
+      (let ((in (stream:make line)))
         (declare (dynamic-extent in))
         (insert in trie memo))
 
       FINALLY
       (return (share trie memo)))))
+ 
+(defun collect-children (node)
+  (loop WITH acc = '()
+        FOR child = (node-child node)
+               THEN (node-sibling child)
+        WHILE child
+    DO
+    (push child acc)
+    FINALLY
+    (return acc)))
 
 ;; for debug
-(defun member?-impl (in node)
-  (cond ((octet-stream:eos? in) t)
+(defun member?-impl (in node parent)
+  (cond ((stream:eos? in) (node-terminal? parent))
         ((null node) nil)
-        ((= (octet-stream:peek in) (node-label node))
-         (member?-impl (octet-stream:eat in) (node-child node)))
-        ((< (octet-stream:peek in) (node-label node))
-         (member?-impl in (node-sibling node)))))
+        ((= (stream:peek in) (node-label node))
+         (member?-impl (stream:eat in) (node-child node) node))
+        ((< (stream:peek in) (node-label node))
+         (member?-impl in (node-sibling node) parent))))
 
 (defun member? (key trie)
   (declare #.*interface*
            (simple-characters key)
            (node trie))
-  (let ((in (octet-stream:make key)))
-    (member?-impl in (node-child trie))))
+  (let ((in (stream:make key)))
+    (member?-impl in (node-child trie) trie)))
 
 (package-alias :dawg.octet-stream)
