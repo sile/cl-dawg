@@ -16,7 +16,17 @@
 　・ハッシュテーブルでSBCLの独自拡張を利用しているためSBCL依存
 
 
+[インストール]
+> (require :asdf)
+> (require :asdf-install)
+> (asdf-install:install "cl-dawg-0.1.0.tar.gz")
+
+
 [API]
+###
+# dawg
+　メインパッケージ
+
 ####
 # dawg:build (&key input output show-progress) => t
 　キーセットファイル※1からDAWGインデックスファイル※2を作成する。
