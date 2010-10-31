@@ -9,9 +9,13 @@
            position))
 (in-package :dawg.octet-stream)
 
+;;;;;;;;;;;;;;;;
+;;; declamation
 (declaim #.*fastest*
          (inline make-octet-stream make eos? octet-length peek read eat position))
 
+;;;;;;;;;;;;;;;;
+;;; octet-stream
 (defstruct octet-stream
   (src      "" :type simple-characters)
   (pos       0 :type array-index)
@@ -20,15 +24,19 @@
   (octet-pos 0 :type (mod 5))
   (octet-len 0 :type (mod 5)))
 
-(defun position (in)
-  (octet-stream-pos in))
-
+;;;;;;;;;;;;;;;;;;;;;;
+;;; auxiliary function
 (defun octet-length (code)
   (declare (unicode code))
   (cond ((< code #x80)    1)
         ((< code #x800)   2)
         ((< code #x10000) 3)
         (t                4)))
+
+;;;;;;;;;;;;;;;;;;;;;
+;;; external function
+(defun position (in)
+  (octet-stream-pos in))
 
 (defun make (string &key (start 0) (end (length string)))
   (declare (simple-characters string)
@@ -45,13 +53,13 @@
     (= pos end)))
 
 (defun peek (in)
-  (with-slots (src pos code octet-pos octet-len) (the octet-stream in)
+  (with-slots (code octet-pos octet-len) (the octet-stream in)
     (if (= octet-pos octet-len)
         (case octet-len
             (1 code)
             (2 (+ #b11000000 (ldb (byte 5  6) code)))
             (3 (+ #b11100000 (ldb (byte 4 12) code)))
-            (4 (+ #b11110000 (ldb (byte 3 18) code))))
+            (t (+ #b11110000 (ldb (byte 3 18) code))))
       (+ #b10000000 (ldb (byte 6 (* (the (mod 4) (1- octet-pos)) 6)) code)))))
 
 (defun eat (in)

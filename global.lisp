@@ -16,18 +16,23 @@
            ;; utility function
            fixnumize
            package-alias
-           muffle-compiler-note
-           a.if
+           muffle
            write-bigendian-uint4
            read-bigendian-uint4
-
+           a.if
+           nlet
+           
            ;; symbol for anaphoric macro
            it))
 (in-package :dawg.global)
 
-(defvar *fastest* '(optimize (speed 3) (safety 0) (debug 0)))
-(defvar *interface* '(optimize (speed 3) (safety 2) (debug 1)))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; special variable for optimize declaration
+(defvar *fastest* '(optimize (speed 3) (safety 0) (debug 0) (compilation-speed 0)))
+(defvar *interface* '(optimize (speed 3) (safety 2) (debug 1) (compilation-speed 0)))
 
+;;;;;;;;;;;;;;;;;;;
+;;; type definition
 (deftype array-index () `(mod ,array-dimension-limit))
 (deftype positive-fixnum () `(integer 0 ,most-positive-fixnum))
 (deftype octet () '(unsigned-byte 8))
@@ -36,7 +41,9 @@
 (deftype uint4 () '(unsigned-byte 32))
 (deftype uint1 () '(unsigned-byte 8))
 
-(declaim (inline fixnumize write-bigendian-uint read-bigendian-uint))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; unility function and macro
+(declaim (inline fixnumize write-bigendian-uint4 read-bigendian-uint4))
 (defun fixnumize (n)
   (ldb (byte #.(integer-length most-positive-fixnum) 0) n))
 
@@ -44,16 +51,10 @@
   `(eval-when (:compile-toplevel :load-toplevel :execute)
      (rename-package ,package ,package ',alias-list)))
 
-(defmacro muffle-compiler-note (&body body)
+(defmacro muffle (&body body)
   `(locally
     (declare #+SBCL (sb-ext:muffle-conditions sb-ext:compiler-note))
     ,@body))
-
-(defmacro a.if (exp then else)
-  `(let ((it ,exp))
-     (if it
-         ,then
-       ,else)))
 
 (defun write-bigendian-uint4 (uint out)
   (loop FOR offset FROM 24 DOWNTO 0 BY 8
@@ -63,3 +64,13 @@
   (loop FOR offset FROM 24 DOWNTO 0 BY 8
         SUM (ash (read-byte in) offset)))
 
+(defmacro a.if (exp then else)
+  `(let ((it ,exp))
+     (if it
+         ,then
+       ,else)))
+
+(defmacro nlet (fn-name letargs &body body)
+  `(labels ((,fn-name ,(mapcar #'car letargs)
+              ,@body))
+     (,fn-name ,@(mapcar #'cadr letargs))))

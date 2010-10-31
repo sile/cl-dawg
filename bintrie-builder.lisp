@@ -3,36 +3,33 @@
   (:export build-from-file
            collect-children
            node-label
+           node-terminal?
            node-child
            node-options
-           member?))
+           element-count))
 (in-package :dawg.bintrie-builder)
 
 (package-alias :dawg.octet-stream :stream)
 
+;;;;;;;;;;;;;;;
+;;; declamation
 (declaim #.*fastest*
-         (inline make-node calc-child-total calc-sibling-total node-options))
+         (inline make-node collect-children calc-child-total calc-sibling-total 
+                 node-options element-count))
 
+;;;;;;;;
+;;; node
 (defstruct node
   (label         0 :type octet)
   (terminal?   nil :type boolean)
   (child       nil :type (or null node))
   (sibling     nil :type (or null node))
-  (child-total   0 :type positive-fixnum)
-  (sibling-total 0 :type positive-fixnum)
+  (child-total   0 :type positive-fixnum) ; amount of child side nodes
+  (sibling-total 0 :type positive-fixnum) ; amount of sibling side nodes
   (hash         -1 :type fixnum))
 
-(defun node-options (node)
-  (with-slots (terminal? sibling-total) (the node node)
-    (+ (if terminal? 1 0)
-       (ash sibling-total 1))))
-
-(defun node= (n1 n2)
-  (and (eq (node-child n1) (node-child n2))
-       (eq (node-sibling n1) (node-sibling n2))
-       (= (node-label n1) (node-label n2))
-       (eq (node-terminal? n1) (node-terminal? n2))))
-
+;;;;;;;;;;;;;;;;;;;;;;
+;;; auxiliary function
 (macrolet ((calc-xxx-total (node slot)
              `(with-slots (,slot) (the node ,node)
                 (if (null ,slot)
@@ -42,6 +39,14 @@
                           (node-child-total ,slot) (node-sibling-total ,slot)))))))
   (defun calc-child-total (node) (calc-xxx-total node child))
   (defun calc-sibling-total (node) (calc-xxx-total node sibling)))
+
+;;;;;;;;;;;;;;;;;
+;;; hash function
+(defun node= (n1 n2)
+  (and (eq (node-child n1) (node-child n2))
+       (eq (node-sibling n1) (node-sibling n2))
+       (= (node-label n1) (node-label n2))
+       (eq (node-terminal? n1) (node-terminal? n2))))
 
 (defun sxhash-node (node)
   (if (null node)
@@ -58,6 +63,8 @@
 
 (sb-ext:define-hash-table-test node= sxhash-node)
 
+;;;;;;;;;;;;;;;;;;
+;;; build function
 (defun share (node memo)
   (if (null node)
       nil
@@ -103,7 +110,20 @@
 
       FINALLY
       (return (share trie memo)))))
- 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; other external function
+(defun node-options (node)
+  "Encode terminal? and sibling-total fields into fixnum"
+  (with-slots (terminal? sibling-total) (the node node)
+    (fixnumize
+     (+ (if terminal? 1 0)
+        (ash sibling-total 1)))))
+
+(defun element-count (node)
+  (with-slots (terminal? child-total) (the node node)
+    (the fixnum (+ (if terminal? 1 0) child-total))))
+        
 (defun collect-children (node)
   (loop WITH acc = '()
         FOR child = (node-child node)
@@ -114,20 +134,20 @@
     FINALLY
     (return acc)))
 
-;; for debug
-(defun member?-impl (in node parent)
-  (cond ((stream:eos? in) (node-terminal? parent))
-        ((null node) nil)
-        ((= (stream:peek in) (node-label node))
-         (member?-impl (stream:eat in) (node-child node) node))
-        ((< (stream:peek in) (node-label node))
-         (member?-impl in (node-sibling node) parent))))
-
+;;;;;;;;;;;;;
+;;; for debug
 (defun member? (key trie)
   (declare #.*interface*
            (simple-characters key)
            (node trie))
   (let ((in (stream:make key)))
-    (member?-impl in (node-child trie) trie)))
+    (declare (dynamic-extent in))
+    (nlet recur ((in in) (node (node-child trie)) (parent trie))
+      (cond ((stream:eos? in) (node-terminal? parent))
+            ((null node) nil)
+            ((= (stream:peek in) (node-label node))
+             (recur (stream:eat in) (node-child node) node))
+            ((< (stream:peek in) (node-label node))
+             (recur in (node-sibling node) parent))))))
 
 (package-alias :dawg.octet-stream)

@@ -1,21 +1,29 @@
-(defpackage :dawg.double-array.node-allocator
+(defpackage dawg.double-array.node-allocator
   (:use :common-lisp :dawg.global)
   (:export make
            allocate))
 (in-package :dawg.double-array.node-allocator)
 
+;;;;;;;;;;;;;;;
+;;; declamation
+(declaim #.*fastest*
+         (inline get-next can-allocate?))
+
+;;;;;;;;;;;;
+;;; constant
 (defconstant +BUFFER_SIZE+ 89120)
 
-(deftype base-flag () `(simple-bit-vector ,+BUFFER_SIZE+))
-(deftype nexts () `(simple-array fixnum (,+BUFFER_SIZE+)))
-
+;;;;;;;;;;;;;;;;;;
+;;; node-allocator
 (defstruct node-allocator 
-  (head #x100 :type fixnum)
-  (bits   #*  :type base-flag)
-  (nexts #()  :type nexts)
-  (prevs #()  :type nexts)
-  (offset  0  :type fixnum))
+  (head #x100 :type array-index)
+  (bits   #*  :type (simple-bit-vector #.+BUFFER_SIZE+))
+  (nexts #()  :type (simple-array fixnum (#.+BUFFER_SIZE+)))
+  (prevs #()  :type (simple-array fixnum (#.+BUFFER_SIZE+)))
+  (offset  0  :type array-index))
 
+;;;;;;;;;;;;;;;
+;;; constructor
 (defun make ()
   (let ((bits  (make-array +BUFFER_SIZE+ :element-type 'bit :initial-element 0))
         (nexts (make-array +BUFFER_SIZE+ :element-type 'fixnum))
@@ -26,14 +34,14 @@
             (aref prevs i) (1- i)))
     (make-node-allocator :nexts nexts :prevs prevs :bits bits)))
 
+;;;;;;;;;;;;;;;;;;;;;;
+;;; auxiliary function
 (defun shift (alloca)
-  (print :shift)
   (with-slots (bits nexts prevs offset head) (the node-allocator alloca)
     (let ((new-offset head))
       (loop WHILE (< new-offset (+ offset (- +BUFFER_SIZE+ (* #x100 2))))
         DO
         (setf new-offset (aref nexts (- new-offset offset))))
-      (print `(:offset ,offset :-> ,new-offset))
       (let* ((delta (- new-offset offset))
              (use-len (- +BUFFER_SIZE+ delta)))
         (shiftf (subseq bits 0 use-len) (subseq bits delta))
@@ -55,59 +63,45 @@
   alloca)
 
 (defun ref (alloca index)
-  (declare #.dawg::*fastest*
-           (fixnum index))
+  (declare (array-index index))
   (with-slots (offset nexts) (the node-allocator alloca)
-    (assert (<= offset index) () "offset:~A > index:~A" offset index)
     (if (<= (+ offset +BUFFER_SIZE+) index)
-        (ref (shift alloca) index)
+        (ref (shift alloca) index) 
       (aref nexts (- index offset)))))
 
 (defun bref (alloca index)
-  (declare #.dawg::*fastest*
-           (fixnum index))
+  (declare (array-index index))
   (with-slots (bits offset) (the node-allocator alloca)
-    ;; (assert (<= offset index))
     (if (> offset index)
         1
-    (if (<= (+ offset +BUFFER_SIZE+) index)
-        (bref (shift alloca) index)
-      (bit bits (- index offset)))))
-  )
+      (if (<= (+ offset +BUFFER_SIZE+) index)
+          (bref (shift alloca) index)
+        (bit bits (- index offset))))))
 
 (defun get-next (alloca index)
   (ref alloca index))
 
 (defun can-allocate? (alloca index arcs)
-  (declare #.dawg::*fastest*
-           (list arcs)
-           (fixnum index))
+  (declare (list arcs)
+           (array-index index))
   (and (zerop (bref alloca index))
        (every (lambda (arc)
+                (declare (octet arc))
                 (/= -1 (ref alloca (+ index arc))))
               arcs)))
 
 (defun allocate-impl (alloca index arcs)
-  (declare #.dawg::*fastest*
-           (fixnum index))
-  ;;(print `(:alloc ,index ,arcs))
+  (declare (array-index index))
   (with-slots (bits head prevs nexts offset) (the node-allocator alloca)
     (when (<= offset index)
-      (assert (<= offset index))
       (setf (bit bits (- index offset)) 1))
     (loop WITH base = index
           FOR arc OF-TYPE (mod #x100) IN arcs
           FOR index OF-TYPE fixnum = (+ base arc)
       DO
-      (ref alloca index) ;; XXX:
       (macrolet ((prev (index) `(aref prevs (- ,index offset)))
                  (next (index) `(aref nexts (- ,index offset))))
-        (assert (/= (prev index) -1))
-        (assert (/= (next index) -1))
-        ;;(print (list index (prev index) (next index)))
-        ;; XXX:
         (when (= head index)
-          (print `(:hit ,head))
           (setf head (next index)))
 
         (when (<= offset (prev index))
@@ -115,15 +109,15 @@
 
           (ref alloca index)
           (ref alloca (next index))
-        (when (<= offset index)
 
+          (when (<= offset index)
+            (setf (prev (next index)) (prev index)
+                  (prev index) -1
+                  (next index) -1))))))
 
-          (setf (prev (next index)) (prev index)
-                (prev index) -1
-                (next index) -1))))))
-
+;;;;;;;;;;;;;;;;;;;;;
+;;; external function
 (defun allocate (alloca arcs)
-  (declare #.dawg::*fastest*)
   (with-slots (head) (the node-allocator alloca)
     (loop WITH front OF-TYPE (mod #x100) = (car arcs)
           FOR cur = (get-next alloca head) THEN (get-next alloca cur)

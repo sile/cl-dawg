@@ -5,15 +5,23 @@
            write-uint))
 (in-package :dawg.double-array.buffered-output)
 
+;;;;;;;;;;;;;;;
+;;; declamation
 (declaim #.*fastest*)
 
+;;;;;;;;;;;;
+;;; constant
 (defconstant +BUFFER_SIZE+ 819200)
 
+;;;;;;;;;;;;;;;;;;;
+;;; buffered-output
 (defstruct buffered-output
   (binary-output nil :type file-stream)
   (buffer        #() :type simple-array)
   (offset          0 :type array-index))
 
+;;;;;;;;;;;;;;;;;;;;;
+;;; external function
 (defmacro with-output ((out path &key (byte-width 1)) &body body)
   (declare ((mod 5) byte-width))
   `(with-open-file (,out ,path :element-type #1='(unsigned-byte ,(* 8 byte-width))
@@ -35,7 +43,7 @@
            (file-position binary-output position)
            (write-byte uint binary-output))
           ((< position (+ offset +BUFFER_SIZE+))
-           (muffle-compiler-note
+           (muffle
             (setf (aref buffer (- position offset)) uint)))
           (t
            (flush out)
@@ -49,7 +57,7 @@
     (file-position binary-output offset)
     (if (null final)
         (write-sequence buffer binary-output)
-      (let ((end (muffle-compiler-note
+      (let ((end (muffle
                   (or (position 0 buffer :from-end t)
                       +BUFFER_SIZE+))))
         (write-sequence buffer binary-output :end end)

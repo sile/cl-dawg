@@ -10,17 +10,26 @@
 
 (package-alias :dawg.octet-stream :stream)
 
-(defun build (&key input-file (output-file "") show-progress) ;; XXX:
-  (declare #.*interface*
-           ((or string pathname) input-file output-file))
-  (declare (ignorable output-file))
-  (dawg.bintrie-builder:build-from-file input-file :show-progress show-progress))
+;;;;;;;;;;;;;;;;;;;;
+;;; special variable
+(eval-when (:compile-toplevel)
+  (defvar *args-type* '(simple-characters double-array &key (:start positive-fixnum)
+                                                            (:end positive-fixnum))))
+;;;;;;;;;;;;;;;
+;;; declamation
+(declaim (inline terminal? sibling-total inc-id each-common-prefix-impl)
+         (ftype (function #.*args-type* boolean) member?)
+         (ftype (function #.*args-type* (or null positive-fixnum)) get-id))
 
+;;;;;;;;;;;;;;;;
+;;; double-array
 (defstruct double-array
   (base #() :type (simple-array uint4))
   (opts #() :type (simple-array uint4))
   (chck #() :type (simple-array uint1)))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; auxiliary function(1)
 (defun read-array-sizes (index-path)
   (with-open-file (in index-path :element-type 'uint1)
     (values (read-bigendian-uint4 in)
@@ -33,6 +42,17 @@
     (let ((ary (make-array size :element-type element-type)))
       (read-sequence ary in)
       ary)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;
+;;; external function(1)
+(defun build (&key input output show-progress) 
+  (declare ((or string pathname) input output))
+  (let ((trie (dawg.bintrie-builder:build-from-file input 
+                                                    :show-progress show-progress)))
+    (dawg.double-array-builder:build-from-bintrie trie
+                                                  :output-file output
+                                                  :show-progress show-progress))
+  t)
 
 (defun load (index-path)
   (declare ((or string pathname file-stream) index-path))
@@ -49,63 +69,79 @@
                                   :element-type 'uint1
                                   :offset (+ 12 base-size opts-size)))))
 
-(defun terminal? (da node)
-  (with-slots (opts) (the double-array da)
-    (ldb-test (byte 1 0) (aref opts node))))
+;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; auxiliary function(2)
+(defun terminal? (opts node)
+  (ldb-test (byte 1 0) (aref opts node)))
 
-(defun sibling-total (da node)
-  (with-slots (opts) (the double-array da)
-    (ash (aref opts node) -1)))
+(defun sibling-total (opts node)
+  (ash (aref opts node) -1))
 
-(defun member?-impl (in da node)
-  (with-slots (base chck opts) (the double-array da)
-    (if (stream:eos? in)
-        (terminal? da node)
-      (let* ((arc (stream:read in))
-             (next (+ (aref base node) arc)))
-        ;;(print (list node arc :-> next :<- (aref chck next) :terminal (terminal? da node)))
-        (when (= (aref chck next) arc)
-          (member?-impl in da next))))))
-     
-;; TODO: nlet 
-(defun member? (key double-array)
-  (let ((in (stream:make key)))
-    (declare (dynamic-extent in))
-    (member?-impl in double-array 0)))
+(defun inc-id (id opts node)
+  (+ id (if (terminal? opts node) 1 0) (sibling-total opts node)))
 
-(defun get-id-impl (in da node id)
-  (with-slots (base chck opts) (the double-array da)
-    (if (stream:eos? in)
-        (and (terminal? da node) id)
-      (let* ((arc (stream:read in))
-             (next (+ (aref base node) arc)))
-        (when (= (aref chck next) arc)
-          (get-id-impl in da next 
-                       (+ id (if (terminal? da node) 1 0) (sibling-total da node))))))))
-
-;; TODO: start, end
-(defun get-id (key double-array)
-  (let ((in (stream:make key)))
-    (declare (dynamic-extent in))
-    (get-id-impl in double-array 0 0)))
-
-(defun each-common-prefix (fn key da)
-  (labels ((recur (in node id)
-             (if (stream:eos? in)
-                 (when (terminal? da node)
-                   (funcall fn id (stream:position in)))
-               (with-slots (base chck opts) (the double-array da)
-                 (when (terminal? da node)
-                   (funcall fn id (stream:position in)))
-                 (let* ((arc (stream:read in))
-                        (next (+ (aref base node) arc)))
-                   (when (= (aref chck next) arc)
-                     (recur in next
-                            (+ id (if (terminal? da node) 1 0) (sibling-total da node)))))))))
-    (let ((in (stream:make key)))
+;;;;;;;;;;;;;;;;;;;;;;;;
+;;; external function(2)
+(defun member? (key double-array &key (start 0) (end (length key)))
+  (declare #.*interface*)
+  (with-slots (base chck opts) double-array
+    (declare #.*fastest*)
+    (let ((in (stream:make key :start start :end end)))
       (declare (dynamic-extent in))
-      (recur in 0 0))))
+      (nlet recur ((node 0))
+        (if (stream:eos? in)
+            (terminal? opts node)
+          (let* ((arc (stream:read in))
+                 (next (the uint4 (+ (aref base node) arc))))
+            (when (= (aref chck next) arc)
+              (recur next))))))))
 
-;;(defmacro each-common-prefix ((id end) (key #|start end|#) &body body)
+(defun get-id (key double-array &key (start 0) (end (length key)))
+  (declare #.*interface*)
+  (with-slots (base chck opts) double-array
+    (declare #.*fastest*)
+    (let ((in (stream:make key :start start :end end)))
+      (declare (dynamic-extent in))
+      (nlet recur ((node 0) (id 0))
+        (declare (positive-fixnum id))
+        (if (stream:eos? in)
+            (and (terminal? opts node) id)
+          (let* ((arc (stream:read in))
+                 (next (the uint4 (+ (aref base node) arc))))
+            (when (= (aref chck next) arc)
+              (recur next (inc-id id opts node)))))))))
+
+(defmacro each-common-prefix ((match-id match-end)
+                              (key double-array &key (start 0) (end `(length ,key)))
+                              &body body)
+  `(progn
+     (each-common-prefix-impl 
+      (lambda (,match-id ,match-end)
+        (declare (positive-fixnum ,match-id)
+                 (array-index ,match-end))
+        ,@body)
+      ,key ,double-array ,start ,end)
+     t))
+
+(defun each-common-prefix-impl (fn key double-array start end)
+  (declare #.*interface*
+           (function fn)
+           (simple-characters key)
+           (double-array double-array)
+           (positive-fixnum start end))
+  (with-slots (base chck opts) double-array
+    (declare #.*fastest*)
+    (let ((in (stream:make key :start start :end end)))
+      (declare (dynamic-extent in))
+      (nlet recur ((node 0) (id 0))
+        (declare (positive-fixnum id))
+        (when (terminal? opts node)
+          (funcall fn id (stream:position in)))
+        (if (stream:eos? in)
+            (and (terminal? opts node) id)
+          (let* ((arc (stream:read in))
+                 (next (the uint4 (+ (aref base node) arc))))
+            (when (= (aref chck next) arc)
+              (recur next (inc-id id opts node)))))))))
 
 (package-alias :dawg.octet-stream)

@@ -7,7 +7,6 @@
   
   :serial t
   :components ((:file "global")
-               (:file "package")
                (:file "octet-stream")
                (:file "bintrie-builder")
                (:file "double-array-node-allocator")
