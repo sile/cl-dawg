@@ -13,20 +13,20 @@
 ;;;;;;;;;;;;;;;;;;;;
 ;;; special variable
 (eval-when (:compile-toplevel)
-  (defvar *args-type* '(simple-characters double-array &key (:start positive-fixnum)
-                                                            (:end positive-fixnum))))
+  (defvar *args-type* '(simple-characters dawg &key (:start positive-fixnum)
+                                                    (:end positive-fixnum))))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; dawg (double-array format)
+(defstruct dawg
+  (base #() :type (simple-array uint4))
+  (opts #() :type (simple-array uint4))
+  (chck #() :type (simple-array uint1)))
+
 ;;;;;;;;;;;;;;;
 ;;; declamation
 (declaim (inline terminal? sibling-total inc-id each-common-prefix-impl)
          (ftype (function #.*args-type* boolean) member?)
          (ftype (function #.*args-type* (or null positive-fixnum)) get-id))
-
-;;;;;;;;;;;;;;;;
-;;; double-array
-(defstruct double-array
-  (base #() :type (simple-array uint4))
-  (opts #() :type (simple-array uint4))
-  (chck #() :type (simple-array uint1)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; auxiliary function(1)
@@ -58,7 +58,7 @@
   (declare ((or string pathname file-stream) index-path))
   (multiple-value-bind (base-size opts-size chck-size)
                        (read-array-sizes index-path)
-    (make-double-array 
+    (make-dawg
      :base (read-array index-path :size (/ base-size 4)
                                   :element-type 'uint4 
                                   :offset 3)
@@ -82,9 +82,9 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; external function(2)
-(defun member? (key double-array &key (start 0) (end (length key)))
+(defun member? (key dawg &key (start 0) (end (length key)))
   (declare #.*interface*)
-  (with-slots (base chck opts) double-array
+  (with-slots (base chck opts) dawg
     (declare #.*fastest*)
     (let ((in (stream:make key :start start :end end)))
       (declare (dynamic-extent in))
@@ -96,9 +96,9 @@
             (when (= (aref chck next) arc)
               (recur next))))))))
 
-(defun get-id (key double-array &key (start 0) (end (length key)))
+(defun get-id (key dawg &key (start 0) (end (length key)))
   (declare #.*interface*)
-  (with-slots (base chck opts) double-array
+  (with-slots (base chck opts) dawg
     (declare #.*fastest*)
     (let ((in (stream:make key :start start :end end)))
       (declare (dynamic-extent in))
@@ -112,7 +112,7 @@
               (recur next (inc-id id opts node)))))))))
 
 (defmacro each-common-prefix ((match-id match-end)
-                              (key double-array &key (start 0) (end `(length ,key)))
+                              (key dawg &key (start 0) (end `(length ,key)))
                               &body body)
   `(progn
      (each-common-prefix-impl 
@@ -120,16 +120,16 @@
         (declare (positive-fixnum ,match-id)
                  (array-index ,match-end))
         ,@body)
-      ,key ,double-array ,start ,end)
+      ,key ,dawg ,start ,end)
      t))
 
-(defun each-common-prefix-impl (fn key double-array start end)
+(defun each-common-prefix-impl (fn key dawg start end)
   (declare #.*interface*
            (function fn)
            (simple-characters key)
-           (double-array double-array)
+           (dawg dawg)
            (positive-fixnum start end))
-  (with-slots (base chck opts) double-array
+  (with-slots (base chck opts) dawg
     (declare #.*fastest*)
     (let ((in (stream:make key :start start :end end)))
       (declare (dynamic-extent in))
