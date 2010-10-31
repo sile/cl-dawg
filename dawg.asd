@@ -11,5 +11,6 @@
                (:file "octet-stream")
                (:file "bintrie-builder")
                (:file "double-array-node-allocator")
+               (:file "double-array-buffered-output")
                (:file "double-array-builder")
                (:file "dawg")))
