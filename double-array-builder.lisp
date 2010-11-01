@@ -12,6 +12,10 @@
 (declaim #.*fastest*
          (inline set-base set-chck set-opts))
 
+;;;;;;;;;;;;
+;;; constant
+(defconstant +BUFFER_SIZE+ 819200)
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; da (abbreviation of "double array")
 (defstruct da
@@ -25,6 +29,12 @@
 (defun temp-path (base ext)
   (format nil "~A.~A.~A" base ext (gentemp)))
 
+(defun copy-stream (from to buffer)
+  (let ((read (read-sequence buffer from)))
+    (write-sequence buffer to :end read)
+    (when (= read (length buffer))
+      (copy-stream from to buffer))))
+
 (defun concat-files (output-filepath &rest input-filepaths)
   (muffle
    (with-open-file (out output-filepath :element-type 'octet
@@ -33,12 +43,11 @@
      (dolist (input-filepath input-filepaths)
        (with-open-file (in input-filepath :element-type 'octet)
          (write-bigendian-uint4 (file-length in) out)))
-
-     (dolist (input-filepath input-filepaths)
-       (with-open-file (in input-filepath :element-type 'octet)
-         (let ((buf (make-array (file-length in) :element-type 'octet)))
-           (read-sequence buf in)
-           (write-sequence buf out)))))))
+     
+     (let ((buffer (make-array +BUFFER_SIZE+ :element-type 'octet)))
+       (dolist (input-filepath input-filepaths)
+         (with-open-file (in input-filepath :element-type 'octet)
+           (copy-stream in out buffer)))))))
 
 ;;;;;;;;;;;;;;;;;;
 ;;; build function
