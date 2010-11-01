@@ -19,7 +19,7 @@
 [インストール]
 > (require :asdf)
 > (require :asdf-install)
-> (asdf-install:install "cl-dawg-0.1.1.tar.gz")
+> (asdf-install:install "http://github.com/downloads/sile/cl-dawg/cl-dawg-0.1.2.tar.gz")
 
 
 [API]
@@ -71,3 +71,8 @@
 　= start: キー文字列内の開始位置
 　= end: キー文字列内の終端位置
 　= body: マッチの度に実行される式
+
+
+[注意事項]
+・DAWGのキー内の文字にヌル文字を含めることは出来ない
+　・DoubleArray中で(CHECK配列の初期値として)特別扱いしているため
