@@ -99,21 +99,23 @@
           FOR arc OF-TYPE (mod #x100) IN arcs
           FOR index OF-TYPE fixnum = (+ base arc)
       DO
-      (macrolet ((prev (index) `(aref prevs (- ,index offset)))
-                 (next (index) `(aref nexts (- ,index offset))))
-        (when (= head index)
-          (setf head (next index)))
+      (when (<= offset index)
+        (ref alloca index)
 
-        (when (<= offset (prev index))
-          (setf (next (prev index)) (next index)))
+        (let ((prev (aref prevs (- index offset)))
+              (next (aref nexts (- index offset))))
+          (setf (aref prevs (- index offset)) -1
+                (aref nexts (- index offset)) -1)
+          
+          (when (= head index)
+            (setf head next))
 
-          (ref alloca index)
-          (ref alloca (next index))
+          (when (<= offset prev)
+            (setf (aref nexts (- prev offset)) next))
 
-          (when (<= offset index)
-            (setf (prev (next index)) (prev index)
-                  (prev index) -1
-                  (next index) -1))))))
+          (when (<= offset next)
+            (ref alloca next)
+            (setf (aref prevs (- next offset)) prev)))))))
 
 ;;;;;;;;;;;;;;;;;;;;;
 ;;; external function

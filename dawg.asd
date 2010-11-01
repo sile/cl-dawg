@@ -3,7 +3,7 @@
 (defsystem dawg
   :name "dawg"
   :author "Takeru Ohta"
-  :version "0.1.0"
+  :version "0.1.1"
   
   :serial t
   :components ((:file "global")

@@ -1,7 +1,8 @@
 (defpackage dawg
   (:use :common-lisp :dawg.global)
   (:shadow :common-lisp load)
-  (:export build
+  (:export dawg
+           build
            load
            member?
            get-id
@@ -21,6 +22,10 @@
   (base #() :type (simple-array uint4))
   (opts #() :type (simple-array uint4))
   (chck #() :type (simple-array uint1)))
+
+(defmethod print-object ((o dawg) stream)
+  (print-unreadable-object (o stream :type t :identity t)
+    (format stream "~A:~A" :node-count (length (dawg-base o)))))
 
 ;;;;;;;;;;;;;;;
 ;;; declamation
