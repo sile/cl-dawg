@@ -11,7 +11,8 @@
 
 ;;;;;;;;;;;;
 ;;; constant
-(defconstant +BUFFER_SIZE+ 89120)
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defconstant +BUFFER_SIZE+ 89120))
 
 ;;;;;;;;;;;;;;;;;;
 ;;; node-allocator
