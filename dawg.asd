@@ -4,6 +4,8 @@
   :name "dawg"
   :author "Takeru Ohta"
   :version "0.1.2"
+
+  :depends-on (:dict)
   
   :serial t
   :components ((:file "global")

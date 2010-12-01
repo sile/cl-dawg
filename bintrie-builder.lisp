@@ -61,19 +61,17 @@
               sibling-total (calc-sibling-total node)))
       hash)))
 
-(sb-ext:define-hash-table-test node= sxhash-node)
-
 ;;;;;;;;;;;;;;;;;;
 ;;; build function
 (defun share (node memo)
   (if (null node)
       nil
-    (or (gethash node memo)
+    (or (dict:get node memo)
         (progn 
           (setf (node-child node) (share (node-child node) memo)
                 (node-sibling node) (share (node-sibling node) memo))
-          (gethash node memo))
-        (setf (gethash node memo) node))))
+          (dict:get node memo))
+        (setf (dict:get node memo) node))))
 
 (defun push-child (in parent)
   (if (stream:eos? in)
@@ -97,7 +95,7 @@
     (format t "~&; build trie from ~A:~%" filepath))
   (with-open-file (is filepath)
     (loop WITH trie = (make-node)
-          WITH memo = (make-hash-table :test #'node=)
+          WITH memo = (dict:make :test #'node= :hash #'sxhash-node)
           FOR line-num OF-TYPE positive-fixnum FROM 0
           FOR line = (read-line is nil nil)
           WHILE line
