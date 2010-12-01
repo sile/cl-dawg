@@ -58,7 +58,7 @@
     (if (null final)
         (write-sequence buffer binary-output)
       (let ((end (muffle
-                  (or (position 0 buffer :from-end t)
-                      +BUFFER_SIZE+))))
-        (write-sequence buffer binary-output :end end)
+                  (or (position-if-not #'zerop buffer :from-end t)
+                      (1- +BUFFER_SIZE+)))))
+        (write-sequence buffer binary-output :end (1+ end))
         (loop REPEAT #x100 DO (write-byte 0 binary-output))))))
