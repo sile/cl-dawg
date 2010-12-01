@@ -14,12 +14,12 @@
 [動作処理系]
 ・SBCL
 　・ハッシュテーブルでSBCLの独自拡張を利用しているためSBCL依存
-
+  ・処理系非依存版: https://github.com/sile/cl-dawg/tree/portable
 
 [インストール]
 > (require :asdf)
 > (require :asdf-install)
-> (asdf-install:install "http://github.com/downloads/sile/cl-dawg/cl-dawg-0.1.2.tar.gz")
+> (asdf-install:install "cl-dawg-0.1.2.tar.gz")
 
 
 [API]
