@@ -66,8 +66,22 @@
                            &body body)
 　入力キーに対して共通接頭辞検索を行う。
 　入力キーの接頭辞部分にマッチするDAWG内の各キーに対して、body部分の処理が実行される。
+　※ return関数を使うことで、途中でループを抜けることが可能
 　= match-id: 入力キーの接頭辞部分にマッチしたキーのID値
 　= match-end: 入力キー内のマッチした部分の終端位置
+　= key: 入力キー文字列。(simple-array character)型でなければならない
+　= start: キー文字列内の開始位置
+　= end: キー文字列内の終端位置
+　= body: マッチの度に実行される式
+
+###
+# dawg:each-predictive ((match-id)
+                        (key dawg &key start end) 
+                        &body body)
+　入力キーが接頭辞となる全ての要素を走査する。
+　各走査で要素のIDを受け取り、body部分の処理が実行される。
+　※ return関数を使うことで、途中でループを抜けることが可能
+　= match-id: 入力キーが接頭辞となる要素のID値
 　= key: 入力キー文字列。(simple-array character)型でなければならない
 　= start: キー文字列内の開始位置
 　= end: キー文字列内の終端位置

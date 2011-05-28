@@ -123,7 +123,7 @@
 (defmacro each-common-prefix ((match-id match-end)
                               (key dawg &key (start 0) (end `(length ,key)))
                               &body body)
-  `(progn
+  `(block nil
      (each-common-prefix-impl 
       (lambda (,match-id ,match-end)
         (declare (positive-fixnum ,match-id)
@@ -152,17 +152,32 @@
             (when (= (aref chck next) arc)
               (recur next (inc-id id opts node)))))))))
 
+(defmacro each-predictive ((match-id)
+                           (key dawg &key (start 0) (end `(length ,key)))
+                           &body body)
+  `(block nil
+     (each-predictive-impl 
+      (lambda (,match-id)
+        (declare (positive-fixnum ,match-id))
+        ,@body)
+      ,key ,dawg ,start ,end)
+     t))
+
 (defun traverse-descendant (fn dawg node id)
+  (declare #.*fastest*
+           (function fn)
+           (dawg dawg)
+           (positive-fixnum node id))
   (with-slots (base chck opts) dawg
     (when (terminal? opts node)
-      (funcall fn (inc-id id opts node)))
+      (funcall fn (inc-id id opts node) "TODO"))
     (loop FOR arc FROM 1 BELOW +ARC_LIMIT+ 
           FOR next = (+ (aref base node) arc)
           WHEN (= (aref chck next) arc)
       DO
       (traverse-descendant fn dawg next (inc-id id opts node)))))
 
-(defun each-predictive (fn key dawg start end)
+(defun each-predictive-impl (fn key dawg start end)
  (declare #.*interface*
            (function fn)
            (simple-characters key)
@@ -174,10 +189,8 @@
       (declare (dynamic-extent in))
       (nlet recur ((node 0) (id -1))
         (declare (fixnum id))
-;        (when (terminal? opts node)
-;          (funcall fn (inc-id id opts node) (stream:position in)))
         (if (stream:eos? in)
-            (traverse-descendant fn dawg node id) 
+            (traverse-descendant fn dawg node id)
           (let* ((arc (stream:read in))
                  (next (the uint4 (+ (aref base node) arc))))
             (when (= (aref chck next) arc)
