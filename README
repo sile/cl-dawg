@@ -21,6 +21,8 @@
 > (require :asdf)
 > (require :asdf-install)
 > (asdf-install:install "cl-dawg-0.1.3-portable.tar.gz")
+;; or 
+> (asdf-install:install :cl-dawg)
 
 
 [API]
