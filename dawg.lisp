@@ -170,7 +170,7 @@
            (positive-fixnum node id))
   (with-slots (base chck opts) dawg
     (when (terminal? opts node)
-      (funcall fn (inc-id id opts node) "TODO"))
+      (funcall fn (inc-id id opts node)))
     (loop FOR arc FROM 1 BELOW +ARC_LIMIT+ 
           FOR next = (+ (aref base node) arc)
           WHEN (= (aref chck next) arc)
