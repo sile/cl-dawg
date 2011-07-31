@@ -3,7 +3,7 @@
 (defsystem dawg
   :name "dawg"
   :author "Takeru Ohta"
-  :version "0.1.6"
+  :version "0.2.0"
 
   :depends-on (:dict)
   
