@@ -6,7 +6,8 @@
            load
            member?
            get-id
-           each-common-prefix))
+           each-common-prefix
+           each-predictive))
 (in-package :dawg)
 
 (package-alias :dawg.octet-stream :stream)
@@ -16,6 +17,8 @@
 (eval-when (:compile-toplevel)
   (defvar *args-type* '(simple-characters dawg &key (:start positive-fixnum)
                                                     (:end positive-fixnum))))
+(defconstant +ARC_LIMIT+ #x100)
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; dawg (double-array format)
 (defstruct dawg
@@ -120,7 +123,7 @@
 (defmacro each-common-prefix ((match-id match-end)
                               (key dawg &key (start 0) (end `(length ,key)))
                               &body body)
-  `(progn
+  `(block nil
      (each-common-prefix-impl 
       (lambda (,match-id ,match-end)
         (declare (positive-fixnum ,match-id)
@@ -148,5 +151,50 @@
                  (next (the uint4 (+ (aref base node) arc))))
             (when (= (aref chck next) arc)
               (recur next (inc-id id opts node)))))))))
+
+(defmacro each-predictive ((match-id)
+                           (key dawg &key (start 0) (end `(length ,key)))
+                           &body body)
+  `(block nil
+     (each-predictive-impl 
+      (lambda (,match-id)
+        (declare (positive-fixnum ,match-id))
+        ,@body)
+      ,key ,dawg ,start ,end)
+     t))
+
+(defun traverse-descendant (fn dawg node id)
+  (declare #.*fastest*
+           (function fn)
+           (dawg dawg)
+           (positive-fixnum node id))
+  (with-slots (base chck opts) dawg
+    (when (terminal? opts node)
+      (funcall fn (inc-id id opts node)))
+    (loop FOR arc FROM 1 BELOW +ARC_LIMIT+ 
+          FOR next = (+ (aref base node) arc)
+          WHEN (= (aref chck next) arc)
+      DO
+      (traverse-descendant fn dawg next (inc-id id opts node)))))
+
+(defun each-predictive-impl (fn key dawg start end)
+ (declare #.*interface*
+           (function fn)
+           (simple-characters key)
+           (dawg dawg)
+           (positive-fixnum start end))
+   (with-slots (base chck opts) dawg
+    (declare #.*fastest*)
+    (let ((in (stream:make key :start start :end end)))
+      (declare (dynamic-extent in))
+      (nlet recur ((node 0) (id -1))
+        (declare (fixnum id))
+        (if (stream:eos? in)
+            (traverse-descendant fn dawg node id)
+          (let* ((arc (stream:read in))
+                 (next (the uint4 (+ (aref base node) arc))))
+            (when (= (aref chck next) arc)
+              (recur next (inc-id id opts node)))))))))
+
 
 (package-alias :dawg.octet-stream)
