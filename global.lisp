@@ -38,6 +38,7 @@
 (deftype octet () '(unsigned-byte 8))
 (deftype simple-characters () '(simple-array character))
 (deftype unicode () `(mod ,char-code-limit))
+(deftype uint8 () '(unsigned-byte 64))
 (deftype uint4 () '(unsigned-byte 32))
 (deftype uint1 () '(unsigned-byte 8))
 
