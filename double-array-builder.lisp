@@ -14,7 +14,7 @@
 
 ;;;;;;;;;;;;
 ;;; constant
-(defconstant +BUFFER_SIZE+ 819200)
+(defconstant +BUFFER_SIZE+ 81920)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; da (abbreviation of "double array")
@@ -30,24 +30,29 @@
   (format nil "~A.~A.~A" base ext (gentemp)))
 
 (defun copy-stream (from to buffer)
+  (declare ((simple-array uint1) buffer))
   (let ((read (read-sequence buffer from)))
     (write-sequence buffer to :end read)
     (when (= read (length buffer))
       (copy-stream from to buffer))))
 
 (defun concat-files (output-filepath &rest input-filepaths)
-  (muffle
-   (with-open-file (out output-filepath :element-type 'octet
+  ;; HEAD: write each file size
+   (with-open-file (out output-filepath :element-type 'uint4
                                         :direction :output
                                         :if-exists :supersede)
-     (dolist (input-filepath input-filepaths)
-       (with-open-file (in input-filepath :element-type 'octet)
-         (write-bigendian-uint4 (file-length in) out)))
-     
+     (dolist (file input-filepaths)
+       (with-open-file (in file :element-type 'uint1)
+         (write-byte (file-length in) out))))
+   
+  ;; BODY: write each file contents
+   (with-open-file (out output-filepath :element-type 'uint1
+                                        :direction :output
+                                        :if-exists :append)
      (let ((buffer (make-array +BUFFER_SIZE+ :element-type 'octet)))
-       (dolist (input-filepath input-filepaths)
-         (with-open-file (in input-filepath :element-type 'octet)
-           (copy-stream in out buffer)))))))
+       (dolist (file input-filepaths)
+         (with-open-file (in file :element-type 'uint1)
+           (copy-stream in out buffer))))))
 
 ;;;;;;;;;;;;;;;;;;
 ;;; build function

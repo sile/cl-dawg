@@ -39,10 +39,10 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; auxiliary function(1)
 (defun read-array-sizes (index-path)
-  (with-open-file (in index-path :element-type 'uint1)
-    (values (read-bigendian-uint4 in)
-            (read-bigendian-uint4 in)
-            (read-bigendian-uint4 in))))
+  (with-open-file (in index-path :element-type 'uint4)
+    (values (read-byte in)
+            (read-byte in)
+            (read-byte in))))
 
 (defun read-array (index-path &key size element-type offset)
   (with-open-file (in index-path :element-type element-type)

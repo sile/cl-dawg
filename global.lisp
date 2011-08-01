@@ -10,6 +10,7 @@
            octet
            simple-characters
            unicode
+           uint8
            uint4
            uint1
 
@@ -17,8 +18,6 @@
            fixnumize
            package-alias
            muffle
-           write-bigendian-uint4
-           read-bigendian-uint4
            a.if
            nlet
            
@@ -56,14 +55,6 @@
   `(locally
     (declare #+SBCL (sb-ext:muffle-conditions sb-ext:compiler-note))
     ,@body))
-
-(defun write-bigendian-uint4 (uint out)
-  (loop FOR offset FROM 24 DOWNTO 0 BY 8
-        DO (write-byte (ldb (byte 8 offset) uint) out)))
-
-(defun read-bigendian-uint4 (in)
-  (loop FOR offset FROM 24 DOWNTO 0 BY 8
-        SUM (ash (read-byte in) offset)))
 
 (defmacro a.if (exp then else)
   `(let ((it ,exp))
