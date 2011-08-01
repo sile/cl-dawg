@@ -23,6 +23,7 @@
   (label         0 :type octet)
   (terminal?   nil :type boolean)
   (child       nil :type (or null node))
+  (nobranch-child-labels nil :type list)
   (sibling     nil :type (or null node))
   (child-total   0 :type positive-fixnum) ; amount of child side nodes
   (sibling-total 0 :type positive-fixnum) ; amount of sibling side nodes
@@ -46,7 +47,8 @@
   (and (eq (node-child n1) (node-child n2))
        (eq (node-sibling n1) (node-sibling n2))
        (= (node-label n1) (node-label n2))
-       (eq (node-terminal? n1) (node-terminal? n2))))
+       (eq (node-terminal? n1) (node-terminal? n2))
+       (equal (node-nobranch-child-labels n1) (node-nobranch-child-labels n2))))
 
 (defun sxhash-node (node)
   (if (null node)
@@ -55,6 +57,7 @@
       (when (= -1 hash)
         (setf hash (logxor (sxhash (node-label node))
                            (sxhash (node-terminal? node))
+                           (sxhash (node-nobranch-child-labels node))
                            (fixnumize (* (sxhash-node (node-child node)) 7))
                            (fixnumize (* (sxhash-node (node-sibling node)) 13))))
         (setf child-total (calc-child-total node)
@@ -63,15 +66,28 @@
 
 ;;;;;;;;;;;;;;;;;;
 ;;; build function
+(defun reduce-nobranch-descendant (node)
+  (loop FOR child = (node-child node)
+        WHILE (and child
+                   (not (node-terminal? child))
+                   (not (node-sibling child)))
+    COLLECT (node-label child) INTO labels
+    DO (setf (node-child node) (node-child child))
+    FINALLY
+    (setf (node-nobranch-child-labels node) labels)))
+
 (defun share (node memo)
-  (if (null node)
-      nil
-    (or (dict:get node memo)
-        (progn 
-          (setf (node-child node) (share (node-child node) memo)
-                (node-sibling node) (share (node-sibling node) memo))
-          (dict:get node memo))
-        (setf (dict:get node memo) node))))
+  (when (null node)
+    (return-from share nil))
+
+  (reduce-nobranch-descendant node)
+
+  (or (dict:get node memo)
+      (progn 
+        (setf (node-child node) (share (node-child node) memo)
+              (node-sibling node) (share (node-sibling node) memo))
+        (dict:get node memo))
+      (setf (dict:get node memo) node)))
 
 (defun push-child (in parent)
   (if (stream:eos? in)
