@@ -67,14 +67,14 @@
 ;;;;;;;;;;;;;;;;;;
 ;;; build function
 (defun reduce-nobranch-descendant (node)
-  (loop FOR child = (node-child node)
+  (loop FOR child = (node-child node) THEN (node-child child)
         WHILE (and child
                    (not (node-terminal? child))
                    (not (node-sibling child)))
     COLLECT (node-label child) INTO labels
-    DO (setf (node-child node) (node-child child))
     FINALLY
-    (setf (node-nobranch-child-labels node) labels)))
+    (setf (node-child node) child
+          (node-nobranch-child-labels node) labels)))
 
 (defun share (node memo)
   (when (null node)
@@ -160,7 +160,11 @@
       (cond ((stream:eos? in) (node-terminal? parent))
             ((null node) nil)
             ((= (stream:peek in) (node-label node))
-             (recur (stream:eat in) (node-child node) node))
+             (when (loop FOR c IN (node-nobranch-child-labels node)
+                         ALWAYS (and (progn (stream:eat in)
+                                            (not (stream:eos? in)))
+                                     (= c (stream:peek in))))
+               (recur (stream:eat in) (node-child node) node)))
             ((< (stream:peek in) (node-label node))
              (recur in (node-sibling node) parent))))))
 
