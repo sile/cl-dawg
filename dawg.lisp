@@ -111,20 +111,15 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; external function(2)
-#+C
-(defun member? (key dawg &key (start 0) (end (length key)))
-  (declare #.*interface*)
-  (with-slots (base chck opts) dawg
-    (declare #.*fastest*)
-    (let ((in (stream:make key :start start :end end)))
-      (declare (dynamic-extent in))
-      (nlet recur ((node 0))
-        (if (stream:eos? in)
-            (terminal? opts node)
-          (let* ((arc (stream:read in))
-                 (next (the uint4 (+ (aref base node) arc))))
-            (when (= (aref chck next) arc)
-              (recur next))))))))
+(defun member?-impl (in dawg)
+  (nlet recur ((node (get-node dawg 0)))
+    (if (stream:eos? in)
+        (terminal? node)
+      (when (check-encoded-children in node)
+        (let* ((arc (stream:read in))
+               (next (get-node dawg (+ (base node) arc))))
+          (when (= (chck next) arc)
+            (recur next)))))))
 
 (defun get-id-impl (in dawg)
   (nlet recur ((node (get-node dawg 0)) (id -1))
@@ -135,14 +130,23 @@
                (next (get-node dawg (+ (base node) arc))))
           (when (= (chck next) arc)
             (recur next (inc-id id dawg node))))))))
+
+(defmacro with-key-stream ((in key &key start end) &body body)
+  `(locally
+    (declare #.*interface*)
+    (locally
+     (declare #.*fastest*)
+     (let ((,in (stream:make ,key :start ,start :end ,end)))
+       (declare (dynamic-extent ,in))
+       ,@body))))
+
+(defun member? (key dawg &key (start 0) (end (length key)))
+  (with-key-stream (in key :start start :end end)
+    (member?-impl in dawg)))
   
 (defun get-id (key dawg &key (start 0) (end (length key)))
-  (declare #.*interface*)
-  (locally
-   (declare #.*fastest*)
-   (let ((in (stream:make key :start start :end end)))
-     (declare (dynamic-extent in))
-     (get-id-impl in dawg))))
+  (with-key-stream (in key :start start :end end)
+    (get-id-impl in dawg)))
 
 #|
 (defmacro each-common-prefix ((match-id match-end)
