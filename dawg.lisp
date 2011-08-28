@@ -50,12 +50,13 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; external function(1)
 (defun build (&key input output show-progress) 
-  (declare ((or string pathname) input output))
-  (let ((trie (dawg.bintrie-builder:build-from-file input 
-                                                    :show-progress show-progress)))
-    (dawg.double-array-builder:build-from-bintrie trie
-                                                  :output-file output
-                                                  :show-progress show-progress))
+  (declare ((or string pathname list) input)
+           ((or string pathname) output))
+  (let ((trie (if (listp input)
+                  (dawg.bintrie-builder:build-from-list input :show-progress show-progress)
+                (dawg.bintrie-builder:build-from-file input :show-progress show-progress))))
+    (dawg.double-array-builder:build-from-bintrie 
+     trie :output-file output :show-progress show-progress))
   t)
 
 (defun load (index-path)

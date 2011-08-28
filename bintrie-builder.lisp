@@ -1,6 +1,7 @@
 (defpackage dawg.bintrie-builder
   (:use :common-lisp :dawg.global)
   (:export build-from-file
+           build-from-list
            collect-children
            node-label
            node-terminal?
@@ -91,24 +92,35 @@
           (push-child in parent))
       (insert (stream:eat in) node memo))))
 
-(defun build-from-file (filepath &key show-progress)
-  (when show-progress
-    (format t "~&; build trie from ~A:~%" filepath))
-  (with-open-file (is filepath)
+(defun build-impl (key-generator show-progress)
     (loop WITH trie = (make-node)
           WITH memo = (dict:make :test #'node= :hash #'sxhash-node)
-          FOR line-num OF-TYPE positive-fixnum FROM 0
-          FOR line = (read-line is nil nil)
-          WHILE line
+          FOR num fixnum FROM 0
+          FOR key = (funcall key-generator)
+          WHILE key
       DO
-      (when (and show-progress (zerop (mod line-num 100000)))
-        (format t "~&;  ~A~%" line-num))
-      (let ((in (stream:make line)))
+      (when (and show-progress (zerop (mod num 100000)))
+        (format t "~&;  ~A~%" num))
+      (let ((in (stream:make key)))
         (declare (dynamic-extent in))
         (insert in trie memo))
 
       FINALLY
-      (return (share trie memo)))))
+      (return (share trie memo))))
+
+(defun build-from-list (keyset &key show-progress)
+  (when show-progress
+    (format t "~&; build trie list (size ~A):~%" (length keyset)))
+  (build-impl (lambda () (prog1 (car keyset)
+                           (setf keyset (cdr keyset))))
+              show-progress))
+  
+(defun build-from-file (filepath &key show-progress)
+  (when show-progress
+    (format t "~&; build trie from ~A:~%" filepath))
+  (with-open-file (in filepath)
+    (build-impl (lambda () (read-line in nil nil)) 
+                show-progress)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; other external function
