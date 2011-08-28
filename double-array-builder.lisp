@@ -75,6 +75,9 @@
                      DO (write-byte b out)))))
   (mapc #'delete-file files))
 
+(defmacro show (fmt &rest args)
+  `(when show-progress
+     (format t ,fmt ,@args)))
 
 ;;;;;;;;;;;;;;;;;;
 ;;; build function
@@ -108,64 +111,40 @@
     (setf (node-base node) base))
   (write-node-impl node da))
 
-(defun build-impl (trie alloca da node memo &optional show-progress elem-count)
-  (declare (ignore show-progress elem-count))
-  (a.if #1=(gethash (bintrie:node-child trie) memo)
-        (write-node node da :base it)
-    (let ((children (bintrie:collect-children trie)))
-      (if (null children)
-          (write-node node da)
-        (progn
-          (loop WHILE (and (null (cdr children))
-                           (not (bintrie::node-terminal? (car children)))
-                           (child-acceptable-p node))
-            DO
-            (add-child node (car children))
-            (setf trie (car children))
-            (setf children (bintrie:collect-children trie)))
+(defmacro show-and-write-node (node da &key base)
+  `(progn 
+     (incf #1=(da-done-count ,da))
+     (when (and show-progress (zerop (mod #1# 100000)))
+       (show ";  ~a nodes~%" #1#))
+     (write-node ,node ,da :base ,base)))
 
-          (a.if #1#
-                (write-node node da :base it)
-            (let ((base-idx (node-allocator:allocate
-                             alloca 
-                             (mapcar #'bintrie:node-label children))))
-              (setf #1# base-idx)
-              (write-node node da :base base-idx)
-            
-              (dolist (child children)
-                (build-impl child alloca da (new-node base-idx child) memo)))))))))
-#+C
-(defun build-impl (trie alloca da node-idx memo show-progress elem-count)
-  (a.if #1=(gethash (bintrie:node-child trie) memo)
-        (progn
-          (when show-progress
-            (incf (da-done-count da) (bintrie:element-count trie)))
-          (set-opts da node-idx (bintrie:node-options trie))
-          (set-base da node-idx it))
-    (let ((children (bintrie:collect-children trie)))
-      (set-opts da node-idx (bintrie:node-options trie))
-      (when children
+(defun build-impl (trie alloca da node memo &optional show-progress)
+  (let ((children (bintrie:collect-children trie)))
+    (loop WHILE (and (not #1=(gethash (bintrie:node-child trie) memo))
+                     (null (cdr children))
+                     (not (bintrie::node-terminal? (car children)))
+                     (child-acceptable-p node))
+      DO
+      (add-child node (car children))
+      (setf trie (car children))
+      (setf children (bintrie:collect-children trie)))
+  
+    (a.if #1#
+          (show-and-write-node node da :base it)
+      (if (null children)
+          (show-and-write-node node da)
         (let ((base-idx (node-allocator:allocate
                          alloca 
                          (mapcar #'bintrie:node-label children))))
           (setf #1# base-idx)
-          (set-base da node-idx base-idx)
+          (show-and-write-node node da :base base-idx)
+            
           (dolist (child children)
-            (when (and show-progress (bintrie:node-terminal? child))
-              (incf (da-done-count da))
-              (when (zerop (mod (da-done-count da) 100000))
-                (format t ";   ~A/~A (~,1F%)~%" 
-                        #2=(da-done-count da) #3=elem-count (muffle (* (/ #2# #3#) 100)))))
-            (build-impl child alloca da
-                        (set-chck da base-idx (bintrie:node-label child))
-                        memo show-progress elem-count)))))))
+            (build-impl child alloca da (new-node base-idx child) memo show-progress)))))))
+                        
 
 ;;;;;;;;;;;;;;;;;;;;;
 ;;; external function
-(defmacro show (fmt &rest args)
-  `(when show-progress
-     (format t ,fmt ,@args)))
-
 (defun build-from-bintrie (trie &key output-file show-progress)
   (show "~2&; build double array from trie:~%")
   (let ((node-file (format nil "~a.node" output-file))
@@ -178,7 +157,8 @@
         (let ((da (make-da :node node :exts exts)))
           (build-impl trie (node-allocator:make) da 
                       (new-node 0 trie)
-                      (make-hash-table :test #'eq)))))
+                      (make-hash-table :test #'eq)
+                      show-progress))))
     (show "; concatenate tempfiles to ~A~%"  output-file)
     (merge-files output-file node-file exts-file))
   'done)
