@@ -10,6 +10,7 @@
            octet
            simple-characters
            unicode
+           uint8
            uint4
            uint1
 
@@ -39,6 +40,7 @@
 (deftype octet () '(unsigned-byte 8))
 (deftype simple-characters () '(simple-array character))
 (deftype unicode () `(mod ,char-code-limit))
+(deftype uint8 () '(unsigned-byte 64))
 (deftype uint4 () '(unsigned-byte 32))
 (deftype uint1 () '(unsigned-byte 8))
 
@@ -76,8 +78,8 @@
               ,@body))
      (,fn-name ,@(mapcar #'cadr letargs))))
 
-(defmacro with-open-output-file ((stream path element-type) &body body)
+(defmacro with-open-output-file ((stream path element-type &key (if-exists :supersede)) &body body)
   `(with-open-file (,stream ,path :direction :output
-                                  :if-exists :supersede
+                                  :if-exists ,if-exists
                                   :element-type ,element-type)
      ,@body))

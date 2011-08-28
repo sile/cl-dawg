@@ -22,28 +22,24 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; dawg (double-array format)
 (defstruct dawg
-  (base #() :type (simple-array uint4))
-  (opts #() :type (simple-array uint4))
-  (chck #() :type (simple-array uint1)))
+  (node #() :type (simple-array uint8))
+  (ext  #() :type (simple-array uint4)))
 
 (defmethod print-object ((o dawg) stream)
   (print-unreadable-object (o stream :type t :identity t)
-    (format stream "~A:~A" :node-count (length (dawg-base o)))))
+    (format stream "~A:~A" :node-count (length (dawg-node o)))))
 
 ;;;;;;;;;;;;;;;
 ;;; declamation
-(declaim (inline terminal? sibling-total inc-id each-common-prefix-impl)
+(declaim (inline check-encoded-children get-node 
+                 base chck terminal? sibling-total inc-id 
+                 get-id-impl member?-impl
+                 each-common-prefix-impl each-predictive-impl)
          (ftype (function #.*args-type* boolean) member?)
          (ftype (function #.*args-type* (or null positive-fixnum)) get-id))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; auxiliary function(1)
-(defun read-array-sizes (index-path)
-  (with-open-file (in index-path :element-type 'uint1)
-    (values (read-bigendian-uint4 in)
-            (read-bigendian-uint4 in)
-            (read-bigendian-uint4 in))))
-
 (defun read-array (index-path &key size element-type offset)
   (with-open-file (in index-path :element-type element-type)
     (file-position in offset)
@@ -64,33 +60,58 @@
 
 (defun load (index-path)
   (declare ((or string pathname file-stream) index-path))
-  (multiple-value-bind (base-size opts-size chck-size)
-                       (read-array-sizes index-path)
+  (let ((sizes (read-array index-path :size 2 :element-type 'uint4 :offset 0)))
     (make-dawg
-     :base (read-array index-path :size (/ base-size 4)
-                                  :element-type 'uint4 
-                                  :offset 3)
-     :opts (read-array index-path :size (/ opts-size 4)
-                                  :element-type 'uint4
-                                  :offset (+ 3 (/ base-size 4)))
-     :chck (read-array index-path :size chck-size
-                                  :element-type 'uint1
-                                  :offset (+ 12 base-size opts-size)))))
+     :node (read-array index-path :element-type 'uint8
+                                  :size (/ (aref sizes 0) 8)
+                                  :offset 1)
+     :ext  (read-array index-path :element-type 'uint4
+                                  :size (/ (aref sizes 1) 4)
+                                  :offset (+ 2 (/ (aref sizes 0) 4))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; auxiliary function(2)
-(defun terminal? (opts node)
-  (ldb-test (byte 1 0) (aref opts node)))
+(declaim (inline %type))
+(defun terminal? (node) (ldb-test (byte 1 31) (the uint8 node)))
+(defun base (node) (ldb (byte 29  0) (the uint8 node)))
+(defun chck (node) (ldb (byte  8 32) (the uint8 node)))
+(defun %type (node) (ldb (byte 2 29) (the uint8 node)))
 
-(defun sibling-total (opts node)
-  (ash (aref opts node) -1))
+(defun sibling-total (da node)
+  (ecase (%type node)
+    (0 (ldb (byte  8 56) node))
+    (1 (ldb (byte 16 48) node))
+    (2 (ldb (byte 24 40) node))
+    (3 (aref (dawg-ext da)
+             (ldb (byte 24 40) node)))))
 
-(defun inc-id (id opts node)
-  (the uint4
-       (+ id (if (terminal? opts node) 1 0) (sibling-total opts node))))
+(defun inc-id (id da node)
+  (let ((terminal (if (terminal? node) 1 0))
+        (sibling-total (sibling-total da node)))
+    (the uint4 (+ id terminal sibling-total))))
+
+(defun check-encoded-children (in node)
+  (declare (uint8 node))
+  (labels ((enc-chck (n)
+             (ldb (byte 8 (+ 40 (* 8 n))) node))
+           (check (n &aux (chck (enc-chck n)))
+             (or (zerop chck)
+                  (and (= chck (stream:read in))
+                       (not (stream:eos? in))))))
+    (declare (inline enc-chck check))
+    (case (%type node)
+      (0 (and (check 0) (check 1)))
+      (1 (check 0))
+      (t t))))
+
+(defun get-node (dawg index)
+  (declare (dawg dawg)
+           (positive-fixnum index))
+  (aref (dawg-node dawg) index))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; external function(2)
+#+C
 (defun member? (key dawg &key (start 0) (end (length key)))
   (declare #.*interface*)
   (with-slots (base chck opts) dawg
@@ -105,21 +126,25 @@
             (when (= (aref chck next) arc)
               (recur next))))))))
 
+(defun get-id-impl (in dawg)
+  (nlet recur ((node (get-node dawg 0)) (id -1))
+    (if (stream:eos? in)
+        (and (terminal? node) (inc-id id dawg node))
+      (when (check-encoded-children in node)
+        (let* ((arc (stream:read in))
+               (next (get-node dawg (+ (base node) arc))))
+          (when (= (chck next) arc)
+            (recur next (inc-id id dawg node))))))))
+  
 (defun get-id (key dawg &key (start 0) (end (length key)))
   (declare #.*interface*)
-  (with-slots (base chck opts) dawg
-    (declare #.*fastest*)
-    (let ((in (stream:make key :start start :end end)))
-      (declare (dynamic-extent in))
-      (nlet recur ((node 0) (id -1))
-        (declare (fixnum id))
-        (if (stream:eos? in)
-            (and (terminal? opts node) (inc-id id opts node))
-          (let* ((arc (stream:read in))
-                 (next (the uint4 (+ (aref base node) arc))))
-            (when (= (aref chck next) arc)
-              (recur next (inc-id id opts node)))))))))
+  (locally
+   (declare #.*fastest*)
+   (let ((in (stream:make key :start start :end end)))
+     (declare (dynamic-extent in))
+     (get-id-impl in dawg))))
 
+#|
 (defmacro each-common-prefix ((match-id match-end)
                               (key dawg &key (start 0) (end `(length ,key)))
                               &body body)
@@ -195,6 +220,6 @@
                  (next (the uint4 (+ (aref base node) arc))))
             (when (= (aref chck next) arc)
               (recur next (inc-id id opts node)))))))))
-
+|#
 
 (package-alias :dawg.octet-stream)

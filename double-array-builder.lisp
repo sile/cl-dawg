@@ -67,7 +67,7 @@
                (write-byte (file-length in) out))))
   
   ;; write each file content
-  (with-open-output-file (out destination 'uint1)
+  (with-open-output-file (out destination 'uint1 :if-exists :append)
     (loop FOR file IN files
           DO (with-open-file (in file :element-type 'uint1)
                (loop FOR b = (read-byte in nil nil)
@@ -99,9 +99,9 @@
           (setf (ldb (byte 24 40) n) sibling-total))
          (3 
           (setf (ldb (byte 24 40) n) (file-position (da-exts da)))
-          (write-byte sibling-total (da-exts da)))))
+          (write-byte sibling-total (da-exts da))))
 
-      (output:write-uint n (da-node da) :position index))))
+       (output:write-uint n (da-node da) :position index)))))
 
 (defun write-node (node da &key base)
   (when base
