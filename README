@@ -9,7 +9,7 @@
 
 
 [バージョン]
-・0.2.1
+・0.2.2
 
 
 [依存パッケージ]
@@ -30,10 +30,12 @@
 　メインパッケージ
 
 ####
-# dawg:build (&key input output show-progress) => t
+# dawg:build (&key input output byte-order show-progress) => t
 　キーセットファイル※1からDAWGインデックスファイル※2を作成する。
 　= input: 入力キーセットファイルのパス名 or キーセットが格納されたリスト (必須)
 　= output: 出力DAWGインデックスファイルのパス名 (必須)
+　= byte-order: インデックスファイルのバイトオーダーを指定する。:native or :big or :little
+　　　　　　　　デフォルトは :native                
 　= show-progress: 作成時の進捗表示を行うかどうか。デフォルトはnil
 
 ※1: キーセットが昇順に改行区切りで格納されているファイル

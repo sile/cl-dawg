@@ -14,6 +14,9 @@
            uint4
            uint1
 
+           ;; byte order
+           +NATIVE_ORDER+
+
            ;; utility function
            fixnumize
            package-alias

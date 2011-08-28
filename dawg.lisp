@@ -49,14 +49,15 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; external function(1)
-(defun build (&key input output show-progress) 
+(defun build (&key input output (byte-order :native) show-progress) 
   (declare ((or string pathname list) input)
-           ((or string pathname) output))
+           ((or string pathname) output)
+           ((member :native :little :big) byte-order))
   (let ((trie (if (listp input)
                   (dawg.bintrie-builder:build-from-list input :show-progress show-progress)
                 (dawg.bintrie-builder:build-from-file input :show-progress show-progress))))
     (dawg.double-array-builder:build-from-bintrie 
-     trie :output-file output :show-progress show-progress))
+     trie :output-file output :byte-order byte-order :show-progress show-progress))
   t)
 
 (defun load (index-path)

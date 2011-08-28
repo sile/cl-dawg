@@ -59,21 +59,58 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;
 ;;; auxiliary function
-(defun merge-files (destination &rest files)
+
+(defun merge-files-native-order (destination files)
   ;; write each file size
   (with-open-output-file (out destination 'uint4)
-    (loop FOR file IN files
+    (loop FOR (file) IN files
           DO (with-open-file (in file :element-type 'uint1)
                (write-byte (file-length in) out))))
   
   ;; write each file content
   (with-open-output-file (out destination 'uint1 :if-exists :append)
-    (loop FOR file IN files
+    (loop FOR (file) IN files
           DO (with-open-file (in file :element-type 'uint1)
                (loop FOR b = (read-byte in nil nil)
                      WHILE b
-                     DO (write-byte b out)))))
-  (mapc #'delete-file files))
+                     DO (write-byte b out))))))
+
+(defun merge-files-reverse-order (destination files)
+  (flet ((byte-rev (n size)
+           (declare ((member 4 8) size))
+           (muffle
+            (loop FOR u fixnum FROM (1- size) DOWNTO 0
+                  FOR l fixnum FROM 0 TO (1- size)
+                  WHILE (> u l)
+              DO
+              (rotatef (ldb (byte 8 (* u 8)) n)
+                       (ldb (byte 8 (* l 8)) n))
+              FINALLY
+              (return n)))))
+    (declare (inline byte-rev))
+
+    ;; write each file size
+    (with-open-output-file (out destination 'uint4)
+      (loop FOR (file) IN files
+            DO (with-open-file (in file :element-type 'uint1)
+                 (write-byte (byte-rev (file-length in) 4) out))))
+  
+    ;; write each file content
+    (loop FOR (file type) IN files
+          FOR byte-size = (ecase type (uint4 4) (uint8 8))
+      DO
+      (with-open-output-file (out destination type :if-exists :append)
+        (with-open-file (in file :element-type type)
+          (loop FOR b = (read-byte in nil nil)
+                WHILE b
+            DO (write-byte (byte-rev b byte-size) out)))))))
+
+(defun merge-files (destination byte-order files)
+  (if (or (eq byte-order :native)
+          (eq byte-order +NATIVE_ORDER+))
+      (merge-files-native-order destination files)
+    (merge-files-reverse-order destination files))
+  (mapc #'delete-file (mapcar #'first files)))
 
 (defmacro show (fmt &rest args)
   `(when show-progress
@@ -145,7 +182,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;
 ;;; external function
-(defun build-from-bintrie (trie &key output-file show-progress)
+(defun build-from-bintrie (trie &key output-file byte-order show-progress)
   (show "~2&; build double array from trie:~%")
   (let ((node-file (format nil "~a.node" output-file))
         (exts-file (format nil "~a.ext" output-file)))
@@ -160,7 +197,7 @@
                       (make-hash-table :test #'eq)
                       show-progress))))
     (show "; concatenate tempfiles to ~A~%"  output-file)
-    (merge-files output-file node-file exts-file))
+    (merge-files output-file byte-order '((node-file uint8) (exts-file uint4))))
   'done)
 
 (package-alias :dawg.double-array.node-allocator)
