@@ -131,14 +131,32 @@
           (when (= (chck next) arc)
             (recur next (inc-id id dawg node))))))))
 
+(defun each-common-prefix-impl (fn in dawg)
+  (nlet recur ((node (get-node dawg 0)) (id -1))
+    (when (terminal? node)
+      (funcall fn (inc-id id dawg node) (stream:position in)))
+    (unless (stream:eos? in)
+      (when (check-encoded-children in node)
+        (let* ((arc (stream:read in))
+               (next (get-node dawg (+ (base node) arc))))
+          (when (= (chck next) arc)
+            (recur next (inc-id id dawg node))))))))
+
 (defmacro with-key-stream ((in key &key start end) &body body)
-  `(locally
-    (declare #.*interface*)
-    (locally
-     (declare #.*fastest*)
-     (let ((,in (stream:make ,key :start ,start :end ,end)))
-       (declare (dynamic-extent ,in))
-       ,@body))))
+  (let ((k (gensym))
+        (s (gensym))
+        (e (gensym)))
+    `(let ((,k ,key)
+           (,s ,start)
+           (,e ,end))
+       (declare #.*interface*
+                (simple-characters ,k)
+                (positive-fixnum ,s ,e))
+       (locally
+        (declare #.*fastest*)
+        (let ((,in (stream:make ,k :start ,s :end ,e)))
+          (declare (dynamic-extent ,in))
+          ,@body)))))
 
 (defun member? (key dawg &key (start 0) (end (length key)))
   (with-key-stream (in key :start start :end end)
@@ -148,39 +166,21 @@
   (with-key-stream (in key :start start :end end)
     (get-id-impl in dawg)))
 
-#|
 (defmacro each-common-prefix ((match-id match-end)
                               (key dawg &key (start 0) (end `(length ,key)))
                               &body body)
-  `(block nil
-     (each-common-prefix-impl 
-      (lambda (,match-id ,match-end)
-        (declare (positive-fixnum ,match-id)
-                 (array-index ,match-end))
-        ,@body)
-      ,key ,dawg ,start ,end)
-     t))
+  (let ((in (gensym)))
+    `(block nil
+       (with-key-stream (,in ,key :start ,start :end ,end)
+         (each-common-prefix-impl 
+          (lambda (,match-id ,match-end)
+            (declare (positive-fixnum ,match-id)
+                     (array-index ,match-end))
+            ,@body)
+          ,in ,dawg))
+       t)))
 
-(defun each-common-prefix-impl (fn key dawg start end)
-  (declare #.*interface*
-           (function fn)
-           (simple-characters key)
-           (dawg dawg)
-           (positive-fixnum start end))
-  (with-slots (base chck opts) dawg
-    (declare #.*fastest*)
-    (let ((in (stream:make key :start start :end end)))
-      (declare (dynamic-extent in))
-      (nlet recur ((node 0) (id -1))
-        (declare (fixnum id))
-        (when (terminal? opts node)
-          (funcall fn (inc-id id opts node) (stream:position in)))
-        (unless (stream:eos? in)
-          (let* ((arc (stream:read in))
-                 (next (the uint4 (+ (aref base node) arc))))
-            (when (= (aref chck next) arc)
-              (recur next (inc-id id opts node)))))))))
-
+#|
 (defmacro each-predictive ((match-id)
                            (key dawg &key (start 0) (end `(length ,key)))
                            &body body)
