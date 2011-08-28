@@ -4,6 +4,7 @@
            collect-children
            node-label
            node-terminal?
+           node-sibling-total
            node-child
            node-options
            element-count))

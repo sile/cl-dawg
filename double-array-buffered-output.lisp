@@ -23,7 +23,7 @@
 ;;;;;;;;;;;;;;;;;;;;;
 ;;; external function
 (defmacro with-output ((out path &key (byte-width 1)) &body body)
-  (declare ((mod 5) byte-width))
+  (declare ((member 1 2 4 8) byte-width))
   `(with-open-file (,out ,path :element-type #1='(unsigned-byte ,(* 8 byte-width))
                                :direction :output
                                :if-exists :supersede)

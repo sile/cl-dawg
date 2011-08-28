@@ -21,6 +21,7 @@
            read-bigendian-uint4
            a.if
            nlet
+           with-open-output-file
            
            ;; symbol for anaphoric macro
            it))
@@ -74,3 +75,9 @@
   `(labels ((,fn-name ,(mapcar #'car letargs)
               ,@body))
      (,fn-name ,@(mapcar #'cadr letargs))))
+
+(defmacro with-open-output-file ((stream path element-type) &body body)
+  `(with-open-file (,stream ,path :direction :output
+                                  :if-exists :supersede
+                                  :element-type ,element-type)
+     ,@body))
