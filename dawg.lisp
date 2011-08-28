@@ -142,6 +142,32 @@
           (when (= (chck next) arc)
             (recur next (inc-id id dawg node))))))))
 
+(defun traverse-descendant (fn dawg node id)
+  (declare #.*fastest*
+           (function fn)
+           (dawg dawg)
+           (uint8 node)
+           (fixnum id))
+  (when (terminal? node)
+    (funcall fn (inc-id id dawg node)))
+  (loop FOR arc FROM 1 BELOW +ARC_LIMIT+ 
+        FOR next OF-TYPE uint8 = (get-node dawg (+ (base node) arc))
+        WHEN (= (chck next) arc)
+      DO
+      (traverse-descendant fn dawg next (inc-id id dawg node))))
+
+(defun each-predictive-impl (fn in dawg)
+  (nlet recur ((node (get-node dawg 0)) (id -1))
+    (declare (fixnum id))
+    (if (stream:eos? in)
+        (traverse-descendant fn dawg node id)
+      (when (check-encoded-children in node)
+        (let* ((arc (stream:read in))
+               (next (get-node dawg (+ (base node) arc))))
+          (when (= (chck next) arc)
+            (recur next (inc-id id dawg node))))))))
+
+
 (defmacro with-key-stream ((in key &key start end) &body body)
   (let ((k (gensym))
         (s (gensym))
@@ -180,50 +206,18 @@
           ,in ,dawg))
        t)))
 
-#|
 (defmacro each-predictive ((match-id)
                            (key dawg &key (start 0) (end `(length ,key)))
                            &body body)
-  `(block nil
-     (each-predictive-impl 
-      (lambda (,match-id)
-        (declare (positive-fixnum ,match-id))
-        ,@body)
-      ,key ,dawg ,start ,end)
-     t))
+  (let ((in (gensym)))
+    `(block nil
+       (with-key-stream (,in ,key :start ,start :end ,end)
+         (each-predictive-impl 
+          (lambda (,match-id)
+            (declare (positive-fixnum ,match-id))
+            ,@body)
+          ,in ,dawg))
+       t)))
 
-(defun traverse-descendant (fn dawg node id)
-  (declare #.*fastest*
-           (function fn)
-           (dawg dawg)
-           (positive-fixnum node id))
-  (with-slots (base chck opts) dawg
-    (when (terminal? opts node)
-      (funcall fn (inc-id id opts node)))
-    (loop FOR arc FROM 1 BELOW +ARC_LIMIT+ 
-          FOR next = (+ (aref base node) arc)
-          WHEN (= (aref chck next) arc)
-      DO
-      (traverse-descendant fn dawg next (inc-id id opts node)))))
-
-(defun each-predictive-impl (fn key dawg start end)
- (declare #.*interface*
-           (function fn)
-           (simple-characters key)
-           (dawg dawg)
-           (positive-fixnum start end))
-   (with-slots (base chck opts) dawg
-    (declare #.*fastest*)
-    (let ((in (stream:make key :start start :end end)))
-      (declare (dynamic-extent in))
-      (nlet recur ((node 0) (id -1))
-        (declare (fixnum id))
-        (if (stream:eos? in)
-            (traverse-descendant fn dawg node id)
-          (let* ((arc (stream:read in))
-                 (next (the uint4 (+ (aref base node) arc))))
-            (when (= (aref chck next) arc)
-              (recur next (inc-id id opts node)))))))))
-|#
 
 (package-alias :dawg.octet-stream)
