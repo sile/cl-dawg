@@ -42,9 +42,11 @@
 ※2: 正確にはDAWGをDoubleArray形式で保存したインデックスファイル
 
 ####
-# dawg:load (index-path) => dawg:dawg
+# dawg:load (index-path &key byte-order) => dawg:dawg
 　DAWGインデックスファイルからDAWG(DoubleArray形式)を読み込む。
 　= index-path: build関数で作成したDAWGインデックスファイル
+　= byte-order: インデックスファイルのバイトオーダーを指定する。:native or :big or :little
+　　　　　　　　デフォルトは :native                
 
 ###
 # dawg:member? (key dawg &key start end) => boolean
