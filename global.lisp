@@ -18,8 +18,11 @@
            fixnumize
            package-alias
            muffle
+           write-bigendian-uint4
+           read-bigendian-uint4
            a.if
            nlet
+           with-open-output-file
            
            ;; symbol for anaphoric macro
            it))
@@ -56,6 +59,14 @@
     (declare #+SBCL (sb-ext:muffle-conditions sb-ext:compiler-note))
     ,@body))
 
+(defun write-bigendian-uint4 (uint out)
+  (loop FOR offset FROM 24 DOWNTO 0 BY 8
+        DO (write-byte (ldb (byte 8 offset) uint) out)))
+
+(defun read-bigendian-uint4 (in)
+  (loop FOR offset FROM 24 DOWNTO 0 BY 8
+        SUM (ash (read-byte in) offset)))
+
 (defmacro a.if (exp then else)
   `(let ((it ,exp))
      (if it
@@ -66,3 +77,9 @@
   `(labels ((,fn-name ,(mapcar #'car letargs)
               ,@body))
      (,fn-name ,@(mapcar #'cadr letargs))))
+
+(defmacro with-open-output-file ((stream path element-type &key (if-exists :supersede)) &body body)
+  `(with-open-file (,stream ,path :direction :output
+                                  :if-exists ,if-exists
+                                  :element-type ,element-type)
+     ,@body))

@@ -4,6 +4,7 @@
            collect-children
            node-label
            node-terminal?
+           node-sibling-total
            node-child
            node-options
            element-count))
@@ -15,7 +16,7 @@
 ;;; declamation
 (declaim #.*fastest*
          (inline make-node collect-children calc-child-total calc-sibling-total 
-                 node-options element-count reduce-nobranch-descendant))
+                 node-options element-count))
 
 ;;;;;;;;
 ;;; node
@@ -23,7 +24,6 @@
   (label         0 :type octet)
   (terminal?   nil :type boolean)
   (child       nil :type (or null node))
-  (nobranch-child-labels nil :type list)
   (sibling     nil :type (or null node))
   (child-total   0 :type positive-fixnum) ; amount of child side nodes
   (sibling-total 0 :type positive-fixnum) ; amount of sibling side nodes
@@ -47,8 +47,7 @@
   (and (eq (node-child n1) (node-child n2))
        (eq (node-sibling n1) (node-sibling n2))
        (= (node-label n1) (node-label n2))
-       (eq (node-terminal? n1) (node-terminal? n2))
-       (equal (node-nobranch-child-labels n1) (node-nobranch-child-labels n2))))
+       (eq (node-terminal? n1) (node-terminal? n2))))
 
 (defun sxhash-node (node)
   (if (null node)
@@ -57,7 +56,6 @@
       (when (= -1 hash)
         (setf hash (logxor (sxhash (node-label node))
                            (sxhash (node-terminal? node))
-                           (sxhash (node-nobranch-child-labels node))
                            (fixnumize (* (sxhash-node (node-child node)) 7))
                            (fixnumize (* (sxhash-node (node-sibling node)) 13))))
         (setf child-total (calc-child-total node)
@@ -66,29 +64,15 @@
 
 ;;;;;;;;;;;;;;;;;;
 ;;; build function
-(defun reduce-nobranch-descendant (node)
-  (when (null (node-nobranch-child-labels node))
-    (loop FOR child = (node-child node) THEN (node-child child)
-          WHILE (and child
-                     (not (node-terminal? child))
-                     (null (node-sibling child)))
-      COLLECT (node-label child) INTO labels
-      FINALLY
-      (setf (node-child node) child
-            (node-nobranch-child-labels node) labels))))
-
 (defun share (node memo)
-  (when (null node)
-    (return-from share nil))
-
-  (reduce-nobranch-descendant node)
-
-  (or (dict:get node memo)
-      (progn 
-        (setf (node-child node) (share (node-child node) memo)
-              (node-sibling node) (share (node-sibling node) memo))
-        (dict:get node memo))
-      (setf (dict:get node memo) node)))
+  (if (null node)
+      nil
+    (or (dict:get node memo)
+        (progn 
+          (setf (node-child node) (share (node-child node) memo)
+                (node-sibling node) (share (node-sibling node) memo))
+          (dict:get node memo))
+        (setf (dict:get node memo) node))))
 
 (defun push-child (in parent)
   (if (stream:eos? in)
@@ -157,17 +141,12 @@
            (node trie))
   (let ((in (stream:make key)))
     (declare (dynamic-extent in))
-    (nlet recur ((in in) (node (node-child trie)) (parent trie) (nobranches '()))
+    (nlet recur ((in in) (node (node-child trie)) (parent trie))
       (cond ((stream:eos? in) (node-terminal? parent))
             ((null node) nil)
-            (nobranches
-             (when (loop FOR c OF-TYPE uint1 IN nobranches
-                         ALWAYS (and (not (stream:eos? in))
-                                     (= c (stream:read in))))
-               (recur in node parent '())))
             ((= (stream:peek in) (node-label node))
-             (recur (stream:eat in) (node-child node) node (node-nobranch-child-labels node)))
+             (recur (stream:eat in) (node-child node) node))
             ((< (stream:peek in) (node-label node))
-             (recur in (node-sibling node) parent '()))))))
+             (recur in (node-sibling node) parent))))))
 
 (package-alias :dawg.octet-stream)
