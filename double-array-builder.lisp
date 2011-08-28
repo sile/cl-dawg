@@ -76,34 +76,21 @@
                      DO (write-byte b out))))))
 
 (defun merge-files-reverse-order (destination files)
-  (flet ((byte-rev (n size)
-           (declare ((member 4 8) size))
-           (muffle
-            (loop FOR u fixnum FROM (1- size) DOWNTO 0
-                  FOR l fixnum FROM 0 TO (1- size)
-                  WHILE (> u l)
-              DO
-              (rotatef (ldb (byte 8 (* u 8)) n)
-                       (ldb (byte 8 (* l 8)) n))
-              FINALLY
-              (return n)))))
-    (declare (inline byte-rev))
-
-    ;; write each file size
-    (with-open-output-file (out destination 'uint4)
-      (loop FOR (file) IN files
-            DO (with-open-file (in file :element-type 'uint1)
-                 (write-byte (byte-rev (file-length in) 4) out))))
+  ;; write each file size
+  (with-open-output-file (out destination 'uint4)
+    (loop FOR (file) IN files
+      DO (with-open-file (in file :element-type 'uint1)
+           (write-byte (byte-reverse (file-length in) 4) out))))
   
-    ;; write each file content
-    (loop FOR (file type) IN files
-          FOR byte-size = (ecase type (uint4 4) (uint8 8))
-      DO
-      (with-open-output-file (out destination type :if-exists :append)
-        (with-open-file (in file :element-type type)
-          (loop FOR b = (read-byte in nil nil)
-                WHILE b
-            DO (write-byte (byte-rev b byte-size) out)))))))
+  ;; write each file content
+  (loop FOR (file type) IN files
+        FOR byte-size = (ecase type (uint4 4) (uint8 8))
+    DO
+    (with-open-output-file (out destination type :if-exists :append)
+      (with-open-file (in file :element-type type)
+        (loop FOR b = (read-byte in nil nil)
+              WHILE b
+          DO (write-byte (byte-reverse b byte-size) out))))))
 
 (defun merge-files (destination byte-order files)
   (if (or (eq byte-order :native)

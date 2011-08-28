@@ -40,11 +40,19 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; auxiliary function(1)
-(defun read-array (index-path &key size element-type offset)
+(defun read-array (index-path &key size element-type offset byte-order)
+  (declare ((member uint4 uint8) element-type))
   (with-open-file (in index-path :element-type element-type)
     (file-position in offset)
     (let ((ary (make-array size :element-type element-type)))
       (read-sequence ary in)
+      (unless (or (eq byte-order :native)
+                  (eq byte-order +NATIVE_ORDER+))
+        (let ((byte-size (ecase element-type
+                           (uint4 4)
+                           (uint8 8))))
+          (dotimes (i size)
+            (setf (aref ary i) (byte-reverse (aref ary i) byte-size)))))
       ary)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;
@@ -60,16 +68,20 @@
      trie :output-file output :byte-order byte-order :show-progress show-progress))
   t)
 
-(defun load (index-path)
-  (declare ((or string pathname file-stream) index-path))
-  (let ((sizes (read-array index-path :size 2 :element-type 'uint4 :offset 0)))
+(defun load (index-path &key (byte-order :native))
+  (declare ((or string pathname file-stream) index-path)
+           ((member :native :little :big) byte-order))
+  (let ((sizes (read-array index-path :size 2 :element-type 'uint4 :offset 0 
+                           :byte-order byte-order)))
     (make-dawg
      :node (read-array index-path :element-type 'uint8
                                   :size (/ (aref sizes 0) 8)
-                                  :offset 1)
+                                  :offset 1
+                                  :byte-order byte-order)
      :ext  (read-array index-path :element-type 'uint4
                                   :size (/ (aref sizes 1) 4)
-                                  :offset (+ 2 (/ (aref sizes 0) 4))))))
+                                  :offset (+ 2 (/ (aref sizes 0) 4))
+                                  :byte-order byte-order))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; auxiliary function(2)

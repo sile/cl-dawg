@@ -16,6 +16,7 @@
 
            ;; byte order
            +NATIVE_ORDER+
+           byte-reverse
 
            ;; utility function
            fixnumize
@@ -76,3 +77,15 @@
                                   :if-exists ,if-exists
                                   :element-type ,element-type)
      ,@body))
+
+(declaim (inline byte-reverse))
+(defun byte-reverse (n size)
+  (declare ((member 2 4 8) size))
+  (muffle
+   (loop FOR u fixnum FROM (1- size) DOWNTO 0
+         FOR l fixnum FROM 0 TO (1- size)
+         WHILE (> u l)
+     DO
+     (rotatef (ldb (byte 8 (* u 8)) n)
+              (ldb (byte 8 (* l 8)) n)))
+   n))
