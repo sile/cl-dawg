@@ -184,7 +184,7 @@
                       (make-hash-table :test #'eq)
                       show-progress))))
     (show "; concatenate tempfiles to ~A~%"  output-file)
-    (merge-files output-file byte-order '((node-file uint8) (exts-file uint4))))
+    (merge-files output-file byte-order `((,node-file uint8) (,exts-file uint4))))
   'done)
 
 (package-alias :dawg.double-array.node-allocator)
