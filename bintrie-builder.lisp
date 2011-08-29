@@ -7,7 +7,6 @@
            node-terminal?
            node-sibling-total
            node-child
-           node-options
            element-count))
 (in-package :dawg.bintrie-builder)
 
@@ -17,7 +16,7 @@
 ;;; declamation
 (declaim #.*fastest*
          (inline make-node collect-children calc-child-total calc-sibling-total 
-                 node-options element-count))
+                 element-count))
 
 ;;;;;;;;
 ;;; node
@@ -124,13 +123,6 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; other external function
-(defun node-options (node)
-  "Encode terminal? and sibling-total fields into fixnum"
-  (with-slots (terminal? sibling-total) (the node node)
-    (fixnumize
-     (+ (if terminal? 1 0)
-        (ash sibling-total 1)))))
-
 (defun element-count (node)
   (with-slots (terminal? child-total) (the node node)
     (the fixnum (+ (if terminal? 1 0) child-total))))
