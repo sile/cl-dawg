@@ -32,7 +32,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; special variable for optimize declaration
-(defvar *fastest* '(optimize (speed 3) (safety 0) (debug 0) (compilation-speed 0)))
+(defparameter *fastest* '(optimize (speed 3) (safety 0) (debug 0) (compilation-speed 0)))
 (defvar *interface* '(optimize (speed 3) (safety 2) (debug 1) (compilation-speed 0)))
 
 ;;;;;;;;;;;;;;;;;;;

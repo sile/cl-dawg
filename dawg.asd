@@ -3,12 +3,11 @@
 (defsystem dawg
   :name "dawg"
   :author "Takeru Ohta"
-  :version "0.2.3"
+  :version "0.3.0"
 
-  :depends-on (:dict)
-  
   :serial t
-  :components ((:file "global")
+  :components ((:file "load-hashmap")
+               (:file "global")
                (:file "byte-order")
                (:file "octet-stream")
                (:file "bintrie-builder")

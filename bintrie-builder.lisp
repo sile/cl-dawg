@@ -11,12 +11,14 @@
 (in-package :dawg.bintrie-builder)
 
 (package-alias :dawg.octet-stream :stream)
+(package-alias :dict-0.2.0 :dict)
 
 ;;;;;;;;;;;;;;;
 ;;; declamation
 (declaim #.*fastest*
          (inline make-node collect-children calc-child-total calc-sibling-total 
-                 element-count))
+                 element-count 
+                 node=))
 
 ;;;;;;;;
 ;;; node
@@ -62,6 +64,8 @@
               sibling-total (calc-sibling-total node)))
       hash)))
 
+(dict:define-test node-test sxhash-node node=)
+
 ;;;;;;;;;;;;;;;;;;
 ;;; build function
 (defun share (node memo)
@@ -93,7 +97,7 @@
 
 (defun build-impl (key-generator show-progress)
     (loop WITH trie = (make-node)
-          WITH memo = (dict:make :test #'node= :hash #'sxhash-node)
+          WITH memo = (dict:make :test 'node-test :rehash-threshold 0.75)
           FOR num fixnum FROM 0
           FOR key = (funcall key-generator)
           WHILE key
@@ -154,3 +158,4 @@
              (recur in (node-sibling node) parent))))))
 
 (package-alias :dawg.octet-stream)
+(package-alias :dict-0.2.0)
