@@ -21,7 +21,8 @@
 (defstruct da
   (node t :type output:buffered-output)
   (exts t :type stream)
-  (done-count 0 :type positive-fixnum))
+  (done-count 0 :type positive-fixnum)
+  (char-chck (make-hash-table) :type hash-table))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; node
@@ -40,16 +41,14 @@
              :sibling-total #1=(bintrie:node-sibling-total trie)
              :terminal? (bintrie:node-terminal? trie)
              :chck (bintrie:node-label trie)
-             :type (cond ((< #1# #x100) 0)
-                         ((< #1# #x10000) 1)
-                         ((< #1# #x1000000) 2)
-                         (t 3))))
+             :type (cond ((< #1# #.(ash 1 5))  #b00)
+                         ((< #1# #.(ash 1 11)) #b10)
+                         (t                    #b11))))
 
 (defun child-acceptable-p (node)
   (with-slots (type children) (the node node)
     (let ((capacity (case type
-                      (0 2)
-                      (1 1)
+                      (#b00 1)
                       (otherwise 0))))
       (plusp (- capacity (length children))))))
 
@@ -59,76 +58,39 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;
 ;;; auxiliary function
-
-(defun merge-files-native-order (destination files)
-  ;; write each file size
-  (with-open-output-file (out destination 'uint4)
-    (loop FOR (file) IN files
-          DO (with-open-file (in file :element-type 'uint1)
-               (write-byte (file-length in) out))))
-  
-  ;; write each file content
-  (with-open-output-file (out destination 'uint1 :if-exists :append)
-    (loop FOR (file) IN files
-          DO (with-open-file (in file :element-type 'uint1)
-               (loop FOR b = (read-byte in nil nil)
-                     WHILE b
-                     DO (write-byte b out))))))
-
-(defun merge-files-reverse-order (destination files)
-  ;; write each file size
-  (with-open-output-file (out destination 'uint4)
-    (loop FOR (file) IN files
-      DO (with-open-file (in file :element-type 'uint1)
-           (write-byte (byte-reverse (file-length in) 4) out))))
-  
-  ;; write each file content
-  (loop FOR (file type) IN files
-        FOR byte-size = (ecase type (uint4 4) (uint8 8))
-    DO
-    (with-open-output-file (out destination type :if-exists :append)
-      (with-open-file (in file :element-type type)
-        (loop FOR b = (read-byte in nil nil)
-              WHILE b
-          DO (write-byte (byte-reverse b byte-size) out))))))
-
-(defun merge-files (destination byte-order files)
-  (if (or (eq byte-order :native)
-          (eq byte-order +NATIVE_ORDER+))
-      (merge-files-native-order destination files)
-    (merge-files-reverse-order destination files))
-  (mapc #'delete-file (mapcar #'first files)))
-
 (defmacro show (fmt &rest args)
   `(when show-progress
      (format t ,fmt ,@args)))
+
+(defun node-label (trie da)
+  (let ((c (bintrie:node-label trie)))
+    (with-slots (char-chck) (the da da)
+      (unless (gethash c char-chck)
+        (setf (gethash c char-chck) (1+ (hash-table-count char-chck))))
+      (gethash c char-chck))))
 
 ;;;;;;;;;;;;;;;;;;
 ;;; build function
 (defun write-node-impl (node da)
   (with-slots (index type base terminal? sibling-total chck children) (the node node)
     (let ((n 0))
-      (declare ((unsigned-byte 64) n))
+      (declare ((unsigned-byte 40) n))
       (muffle
-       (setf (ldb (byte 29  0) n) base
-             (ldb (byte  2 29) n) type
-             (ldb (byte  1 31) n) (if terminal? 1 0)
-             (ldb (byte  8 32) n) chck)
+       (setf (ldb (byte 19  0) n) base
+             (ldb (byte  1 19) n) (if terminal? 1 0)
+             (ldb (byte  7 20) n) chck
+             (ldb (byte  2 38) n) type))
        (case type
-         (0
-          (setf (ldb (byte  8 40) n) (or (first children) 0)
-                (ldb (byte  8 48) n) (or (second children) 0)
-                (ldb (byte  8 56) n) sibling-total))
-         (1 
-          (setf (ldb (byte  8 40) n) (or (first children) 0)
-                (ldb (byte 16 48) n) sibling-total))
-         (2 
-          (setf (ldb (byte 24 40) n) sibling-total))
-         (3 
-          (setf (ldb (byte 24 40) n) (file-position (da-exts da)))
+         (#b00
+          (setf (ldb (byte  7 27) n) (or (first children) 0)
+                (ldb (byte  5 34) n) sibling-total))
+         (#b10 
+          (setf (ldb (byte 11 27) n) sibling-total))
+         (#b11
+          (setf (ldb (byte 11 27) n) (file-position (da-exts da)))
           (write-byte sibling-total (da-exts da))))
 
-       (output:write-uint n (da-node da) :position index)))))
+       (output:write-uint n (da-node da) :position index))))
 
 (defun write-node (node da &key base)
   (when base
@@ -176,15 +138,14 @@
     (show ";  create tmpfiles: ~a, ~a~%" node-file exts-file)
 
     (show "; build:~%")
-    (output:with-output (node node-file :byte-width 8)
+    (output:with-output (node node-file :byte-width 5)
       (with-open-output-file (exts exts-file 'uint4)
         (let ((da (make-da :node node :exts exts)))
           (build-impl trie (node-allocator:make) da 
                       (new-node 0 trie)
                       (make-hash-table :test #'eq)
                       show-progress))))
-    (show "; concatenate tempfiles to ~A~%"  output-file)
-    (merge-files output-file byte-order `((,node-file uint8) (,exts-file uint4))))
+    (show "; concatenate tempfiles to ~A~%"  output-file))
   'done)
 
 (package-alias :dawg.double-array.node-allocator)
