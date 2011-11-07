@@ -112,10 +112,11 @@
           (setf (ldb (byte 11 27) n) sibling-total))
          (#b11
           (setf (ldb (byte 11 27) n) (file-position (da-exts da)))
-          (write-byte sibling-total (da-exts da))))
+          ;; XXX: little-endianを想定
+          (write-byte (byte-reverse sibling-total 4) (da-exts da))))
 
-       ;; XXX: little-endianを想定
-       (output:write-uint (byte-reverse n 4) (da-node da) :position index))))
+       
+       (output:write-uint n (da-node da) :position index))))
 
 (defun write-node (node da &key base)
   (when base
