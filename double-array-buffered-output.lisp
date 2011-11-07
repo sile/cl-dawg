@@ -62,7 +62,7 @@
 (defun flush (out &key final)
   (declare (buffered-output out))
   (with-slots (binary-output buffer offset width) out
-    (file-position binary-output offset)
+    (file-position binary-output (* offset width))
     (if (null final)
         (loop FOR n ACROSS buffer DO (write-bytes n width binary-output))
       (let ((end (muffle
