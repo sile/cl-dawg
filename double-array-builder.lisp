@@ -66,7 +66,7 @@
     (loop FOR (file) IN files
           DO (with-open-file (in file :element-type 'uint1)
                (write-byte (file-length in) out))))
-  
+
   ;; write each file content
   (with-open-output-file (out destination 'uint1 :if-exists :append)
     (loop FOR (file) IN files
@@ -81,7 +81,7 @@
     (loop FOR (file) IN files
       DO (with-open-file (in file :element-type 'uint1)
            (write-byte (byte-reverse (file-length in) 4) out))))
-  
+
   ;; write each file content
   (loop FOR (file type) IN files
         FOR byte-size = (ecase type (uint4 4) (uint8 8))
@@ -119,12 +119,12 @@
           (setf (ldb (byte  8 40) n) (or (first children) 0)
                 (ldb (byte  8 48) n) (or (second children) 0)
                 (ldb (byte  8 56) n) sibling-total))
-         (1 
+         (1
           (setf (ldb (byte  8 40) n) (or (first children) 0)
                 (ldb (byte 16 48) n) sibling-total))
-         (2 
+         (2
           (setf (ldb (byte 24 40) n) sibling-total))
-         (3 
+         (3
           (setf (ldb (byte 24 40) n) (file-position (da-exts da)))
           (write-byte sibling-total (da-exts da))))
 
@@ -136,7 +136,7 @@
   (write-node-impl node da))
 
 (defmacro show-and-write-node (node da &key base)
-  `(progn 
+  `(progn
      (incf #1=(da-done-count ,da))
      (when (and show-progress (zerop (mod #1# 100000)))
        (show ";  ~a nodes~%" #1#))
@@ -145,27 +145,27 @@
 (defun build-impl (trie alloca da node memo &optional show-progress)
   (let ((children (bintrie:collect-children trie)))
     (loop WHILE (and (not #1=(gethash (bintrie:node-child trie) memo))
-                     (null (cdr children))
+                     (and (car children) (null (cdr children)))
                      (not (bintrie::node-terminal? (car children)))
                      (child-acceptable-p node))
       DO
       (add-child node (car children))
       (setf trie (car children))
       (setf children (bintrie:collect-children trie)))
-  
+
     (a.if #1#
           (show-and-write-node node da :base it)
       (if (null children)
           (show-and-write-node node da)
         (let ((base-idx (node-allocator:allocate
-                         alloca 
+                         alloca
                          (mapcar #'bintrie:node-label children))))
           (setf #1# base-idx)
           (show-and-write-node node da :base base-idx)
-            
+
           (dolist (child children)
             (build-impl child alloca da (new-node base-idx child) memo show-progress)))))))
-                        
+
 
 ;;;;;;;;;;;;;;;;;;;;;
 ;;; external function
@@ -179,7 +179,7 @@
     (output:with-output (node node-file :byte-width 8)
       (with-open-output-file (exts exts-file 'uint4)
         (let ((da (make-da :node node :exts exts)))
-          (build-impl trie (node-allocator:make) da 
+          (build-impl trie (node-allocator:make) da
                       (new-node 0 trie)
                       (make-hash-table :test #'eq)
                       show-progress))))
