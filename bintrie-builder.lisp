@@ -16,8 +16,8 @@
 ;;;;;;;;;;;;;;;
 ;;; declamation
 (declaim #.*fastest*
-         (inline make-node collect-children calc-child-total calc-sibling-total 
-                 element-count 
+         (inline make-node collect-children calc-child-total calc-sibling-total
+                 element-count
                  node=))
 
 ;;;;;;;;
@@ -33,15 +33,21 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;
 ;;; auxiliary function
-(macrolet ((calc-xxx-total (node slot)
-             `(with-slots (,slot) (the node ,node)
-                (if (null ,slot)
-                    0
-                  (the positive-fixnum
-                       (+ (if (node-terminal? ,slot) 1 0)
-                          (node-child-total ,slot) (node-sibling-total ,slot)))))))
-  (defun calc-child-total (node) (calc-xxx-total node child))
-  (defun calc-sibling-total (node) (calc-xxx-total node sibling)))
+(defun calc-child-total (node)
+  (with-slots (child) (the node node)
+    (if (null child)
+        0
+      (the positive-fixnum
+           (+ (if (node-terminal? child) 1 0)
+              (node-child-total child) (node-sibling-total child))))))
+
+(defun calc-sibling-total (node)
+  (with-slots (sibling) (the node node)
+    (if (null sibling)
+        0
+      (the positive-fixnum
+           (+ (if (node-terminal? sibling) 1 0)
+              (node-child-total sibling) (node-sibling-total sibling))))))
 
 ;;;;;;;;;;;;;;;;;
 ;;; hash function
@@ -72,7 +78,7 @@
   (if (null node)
       nil
     (or (dict:get node memo)
-        (progn 
+        (progn
           (setf (node-child node) (share (node-child node) memo)
                 (node-sibling node) (share (node-sibling node) memo))
           (dict:get node memo))
@@ -117,12 +123,12 @@
   (build-impl (lambda () (prog1 (car keyset)
                            (setf keyset (cdr keyset))))
               show-progress))
-  
+
 (defun build-from-file (filepath &key show-progress)
   (when show-progress
     (format t "~&; build trie from ~A:~%" filepath))
   (with-open-file (in filepath)
-    (build-impl (lambda () (read-line in nil nil)) 
+    (build-impl (lambda () (read-line in nil nil))
                 show-progress)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -130,7 +136,7 @@
 (defun element-count (node)
   (with-slots (terminal? child-total) (the node node)
     (the fixnum (+ (if terminal? 1 0) child-total))))
-        
+
 (defun collect-children (node)
   (loop WITH acc = '()
         FOR child = (node-child node)
