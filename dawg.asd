@@ -3,7 +3,7 @@
 (defsystem dawg
   :name "dawg"
   :author "Takeru Ohta"
-  :version "0.3.2"
+  :version "0.3.3"
 
   :serial t
   :components ((:file "load-hashmap")
